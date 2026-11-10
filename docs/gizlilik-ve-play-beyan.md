@@ -68,3 +68,4 @@ Kullanıcı dilediği zaman verilerini JSON biçiminde dışa aktarabilir, içe 
 | **Kesin Alarm İzni (`USE_EXACT_ALARM` / `SCHEDULE_EXACT_ALARM`)** | Pazar 09:00 TRT haftalık rapor ve BIST seans açılış/kapanış bildirimleri | `AlarmManager.canScheduleExactAlarms()` kontrol edilir; izin yoksa güvenli `setAndAllowWhileIdle` yedeğine düşer. |
 | **Hedef SDK (`targetSdk` / `compileSdk`)** | `36` (Android 16 / API 36 uyumlu) | `pusula_app/android/app/build.gradle.kts` içinde `compileSdk = 36`, `targetSdk = 36`, `minSdk = 24`. |
 | **Yeni Kişisel Geliştirici Hesabı Test Şartı** | En az 12 test kullanıcısıyla 14 gün kapalı test | Google Play'in Kasım 2023 sonrası açılan kişisel geliştirici hesapları için zorunlu tuttuğu kapalı test aşaması. |
+

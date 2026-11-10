@@ -195,6 +195,24 @@ void main() {
       expect(f.calls.single.queryParameters['enddate'], '10-11-2026');
     });
 
+    test('karışık tarih sırasıyla gelen satırları kronolojik sıralar ve son fiyatı doğru alır', () async {
+      final unsortedBody = jsonEncode({
+        'ok': true,
+        'value': [
+          row('10-11-2026', 313.75, 309, 315, 8e9),
+          row('06-11-2026', 300, 296, 303, 9e9),
+          row('09-11-2026', 310, 302, 310.25, 14.5e9),
+        ],
+      });
+      final f = FakeFetcher((_) => unsortedBody);
+      final s = await IsYatirimProvider(f)
+          .fetchCandles(thy, BarInterval.d1, limit: 100, now: DateTime.utc(2026, 11, 10, 16));
+      expect(s.closed.length, 3);
+      expect(s.closed.first.close, 300);
+      expect(s.closed.last.close, 313.75);
+      expect(s.lastPrice, 313.75);
+    });
+
     test('yalnızca BIST günlük desteklenir; bozuk yanıt sağlayıcı hatasıdır', () {
       final p = IsYatirimProvider(FakeFetcher((_) => '<html>bakım</html>'));
       expect(p.supports(thy, BarInterval.h1), isFalse);

@@ -241,6 +241,58 @@ class OzetScreen extends ConsumerWidget {
           children: [
             const Expanded(
               child: Text(
+                'Canlı Piyasa Fiyatları (Kripto & BIST)',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+              ),
+            ),
+            TextButton.icon(
+              onPressed: state.isLoading ? null : () => controller.refreshLiveMarketData(),
+              icon: const Icon(Icons.sync, size: 16),
+              label: Text(state.isLoading ? 'Yenileniyor...' : 'Canlı Yenile'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Kripto Evreni (Binance Spot / Futures · Anlık)',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: GunduzColors.coral),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final q in state.cryptoQuotes) _LiveQuoteChip(quote: q),
+                  ],
+                ),
+                const Divider(height: 22),
+                const Text(
+                  'Borsa İstanbul İzleme (Yahoo Finance / İş Yatırım · ~15 dk Gecikmeli)',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: GunduzColors.accent),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final q in state.bistQuotes) _LiveQuoteChip(quote: q),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Row(
+          children: [
+            const Expanded(
+              child: Text(
                 'Son Yerel Bildirimler',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
               ),
@@ -300,6 +352,65 @@ class _PillBadge extends StatelessWidget {
           fontWeight: FontWeight.w700,
           color: color,
         ),
+      ),
+    );
+  }
+}
+
+class _LiveQuoteChip extends StatelessWidget {
+  const _LiveQuoteChip({required this.quote});
+
+  final LiveMarketQuote quote;
+
+  static String _formatPrice(double p, Market m) {
+    if (m == Market.bist) {
+      return '${p.toStringAsFixed(2).replaceAll('.', ',')} TL';
+    }
+    if (p >= 1000) return '${p.toStringAsFixed(2).replaceAll('.', ',')} \$';
+    if (p >= 1) return '${p.toStringAsFixed(3).replaceAll('.', ',')} \$';
+    return '${p.toStringAsFixed(4).replaceAll('.', ',')} \$';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final chg = quote.changePct;
+    final chgColor = chg > 0.001
+        ? GunduzColors.profitGreen
+        : (chg < -0.001 ? GunduzColors.lossRed : GunduzColors.neutralSlate);
+    final sign = chg > 0.001 ? '+' : '';
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: isDark ? GunduzColors.darkSubtleSurface : GunduzColors.subtleSurface,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isDark ? GunduzColors.darkBorder : GunduzColors.border,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            quote.instrument.short,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            _formatPrice(quote.lastPrice, quote.instrument.market),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(width: 5),
+          Text(
+            '$sign%${chg.toStringAsFixed(2).replaceAll('.', ',')}',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: chgColor,
+            ),
+          ),
+        ],
       ),
     );
   }

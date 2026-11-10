@@ -21,6 +21,7 @@ Future<void> main() async {
       overrides: [
         storageBundleProvider.overrideWithValue(storage),
         notificationGatewayProvider.overrideWithValue(notificationGateway),
+        liveNetworkEnabledProvider.overrideWithValue(true),
       ],
       child: const PusulaApp(),
     ),
@@ -75,9 +76,26 @@ class _PusulaHomeShellState extends ConsumerState<PusulaHomeShell> {
 
   @override
   Widget build(BuildContext context) {
+    final state = ref.watch(pusulaControllerProvider);
+    final controller = ref.read(pusulaControllerProvider.notifier);
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_titles[_selectedIndex]),
+        actions: [
+          IconButton(
+            key: const Key('btn_refresh_live_data'),
+            tooltip: 'Canlı BIST ve Kripto Fiyatlarını Yenile',
+            onPressed: state.isLoading ? null : () => controller.refreshLiveMarketData(),
+            icon: state.isLoading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync),
+          ),
+        ],
       ),
       body: _pages[_selectedIndex],
       bottomNavigationBar: Container(

@@ -2,6 +2,16 @@
 
 Uygulama ve strateji sürümleri burada tutulur. Her kayıt: ne değişti, neden, nasıl geri alınır.
 
+## pusula_app 1.0.1 & pusula_core 0.4.1 — 2026-11-10 (Canlı Fiyat Bağlantısı ve İş Yatırım Sıralama Düzeltmesi)
+
+**Düzeltildi ve Eklendi** (`pusula_app/lib/src/state/pusula_controller.dart`, `pusula_core/lib/src/data/isyatirim_provider.dart`, `araclar/cors_proxy.dart`)
+- **Canlı Piyasa Fiyatları (`refreshLiveMarketData`):** `PusulaController` içine gerçek zamanlı `MarketDataService` (`BinanceProvider`, `YahooProvider`, `IsYatirimProvider`) bağlantısı eklendi. Uygulama açılışında ve üst çubuktaki yenile (`Icons.sync`) düğmesiyle tüm 10 kripto varlığın (Binance Spot/Futures) ve BIST izleme listesinin (Yahoo Finance `.IS` / İş Yatırım) canlı fiyatları çekilerek hem **Canlı Piyasa Fiyatları** kartı hem de aktif sinyal giriş/stop/hedef seviyeleri gerçek piyasa verisiyle güncellenir.
+- **Eski Sabit Tohum Fiyatlarının Temizlenmesi:** İlk sürümde yer alan sabit örnek fiyatlar (`BTC 86.400`, `SOL 148,80`, `ASELS 92,75`, `AKBNK 64,25`) kaldırıldı; gerçek güncel seviyelerle (`BTC ~73.506 $`, `SOL ~82,90 $`, `LINK ~10,30 $`, `THYAO 313,75 TL`, `ASELS 337,00 TL`, `AKBNK 70,70 TL`, `XU100 11.661,86`) kalibre edildi ve SQLite'taki eski tohum kayıtlarının otomatik temizlenmesi sağlandı.
+- **İş Yatırım Kronolojik Sıralama Düzeltmesi (`IsYatirimProvider`):** İş Yatırım `HisseTekil` uç noktasının satırları karışık tarih sırasıyla döndürmesi nedeniyle son kapanış fiyatının eski bir tarihten okunması hatası, satırlar `openTime` alanına göre kronolojik sıralanarak giderildi (birim testi eklendi, toplam 67 çekirdek testi).
+- **PC (Chrome / Web) CORS Köprüsü (`araclar/cors_proxy.dart`):** Bilgisayarda Chrome üzerinden çalıştırıldığında Yahoo Finance ve İş Yatırım isteklerinin tarayıcı CORS engeline takılmaması için `araclar/ortam.ps1` içine `127.0.0.1:8787` üzerinde çalışan yerel salt-okunur köprü eklendi.
+
+**Geri alma:** `git revert` ile önceki commit'e dönülebilir.
+
 ## pusula_app 1.0.0 — 2026-11-10 (Faz 7 — Yayına Hazırlık)
 
 **Eklendi** (`docs/gizlilik-ve-play-beyan.md` ve `pusula_app/lib/src/screens/ayar_screen.dart`)
