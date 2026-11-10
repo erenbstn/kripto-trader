@@ -2,6 +2,15 @@
 
 Uygulama ve strateji sürümleri burada tutulur. Her kayıt: ne değişti, neden, nasıl geri alınır.
 
+## pusula_core 0.3.0 — 2026-11-10 (Faz 3)
+
+**Eklendi** (`pusula_core/lib/src/report/`)
+- `PortfolioWeightAllocator` ve `RiskAppetite` (Temkinli 0,6×, Dengeli 1,0×, Atak 1,4×): eşit risk bütçesinden (%0,5–%1,5) ağırlık türetme; tek varlık (%20), kripto toplamı (%40), toplam açık risk (%6) ve en az nakit (%20) sınırlarıyla orantılı küçültme; eşik üstü fırsat yoksa `%100 nakit` ("Bu hafta net fırsat yok, nakitte kal").
+- `WeeklyReportGenerator`, `WeeklyReport`, `LastWeekReview`, `ShortTermWeeklyReport`: Pazar günü sırasıyla (1) geçen hafta raporu (kayıt yoksa "Geçen hafta raporu: henüz veri yok"), (2) kısa vade haftalık raporu (BIST ve Kripto ayrı, strateji kırılımlı), (3) yeni haftanın önerileri (BIST ve Kripto ayrı).
+- `WeeklyReportStore` ve `MemoryWeeklyReportStore`: haftalık rapor arşivi ve yalnızca ileriye dönük gerçekleşen sonuçlardan oluşan 100 bazlı performans eğrisi (`PerformanceCurvePoint`).
+
+**Geri alma:** `git revert` ile önceki commit'e dönülebilir.
+
 ## pusula_core 0.2.0 — 2026-11-10 (Faz 2, Strateji 2.0.0)
 
 **Eklendi** (`pusula_core/lib/src/analysis/` ve `lib/src/journal/`)

@@ -1,6 +1,6 @@
 # Karar Kaydı — Pusula (çalışma adı)
 
-Son güncelleme: 2026-11-10 · Durum: Faz 0, Faz 1 ve Faz 2 tamamlandı.
+Son güncelleme: 2026-11-10 · Durum: Faz 0–3 tamamlandı.
 
 Bu dosya mimari, teknoloji ve analiz kararlarını gerekçeleriyle tutar. Her karar geri alınabilir;
 değişirse eskisi silinmez, "değişti" notuyla kalır.
@@ -156,6 +156,7 @@ büyük ağırlık (aynı riskle).
 
 "Temkinli" ve "atak" ayarları bu değerleri sırasıyla 0,6× ve 1,4× ölçekler (tek varlık sınırı en çok %25).
 Tutar gösterimi kullanıcının girdiği bütçeyle çarpılarak yapılır; uygulama emir açmaz.
+- **Sıralı orantılı küçültme (Faz 3 uygulaması):** Ağırlık hesaplamasında önce tek varlık tavanı (%20 / %12 / %25), ardından kripto toplam tavanı (%40 / %24 / %56), ardından toplam açık risk tavanı (%6 / %3,6 / %8,4) ve son olarak en az nakit tamponu (%20 / %35 / %15) sırasıyla uygulanır; her aşamada sınır aşımı varsa ilgili grup orantılı küçültülür. Performans eğrisi yalnızca ileriye dönük gerçekleşen haftalık raporlardan (100 bazlı bileşik endeks) üretilir.
 
 ---
 

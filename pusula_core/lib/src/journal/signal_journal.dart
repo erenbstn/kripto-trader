@@ -112,6 +112,7 @@ class SignalRecord {
   SignalRecord copyWith({
     double? currentStop,
     SignalStatus? status,
+    bool? isWeeklyProposal,
     DateTime? target1HitAt,
     DateTime? closedAt,
     double? exitPrice,
@@ -147,7 +148,7 @@ class SignalRecord {
         createdAt: createdAt,
         expiresAt: expiresAt,
         status: status ?? this.status,
-        isWeeklyProposal: isWeeklyProposal,
+        isWeeklyProposal: isWeeklyProposal ?? this.isWeeklyProposal,
         allocatedWeightPct: allocatedWeightPct ?? this.allocatedWeightPct,
         target1HitAt: target1HitAt ?? this.target1HitAt,
         closedAt: closedAt ?? this.closedAt,

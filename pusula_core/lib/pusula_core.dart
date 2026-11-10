@@ -27,4 +27,7 @@ export 'src/data/yahoo_provider.dart';
 export 'src/journal/signal_journal.dart';
 export 'src/model/candle.dart';
 export 'src/model/market.dart';
+export 'src/report/report_generator.dart';
+export 'src/report/weekly_report.dart';
+export 'src/report/weighting.dart';
 export 'src/util/clock.dart';

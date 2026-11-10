@@ -19,7 +19,8 @@ Bu depo üç şeyi barındırır:
 | 0 — Telegram temizliği, token silme | Tamam |
 | 1 — Veri katmanı, BIST takvimi ve evreni | Tamam |
 | 2 — Analiz çekirdeği ve sinyal günlüğü (`pusula_core` 0.2.0) | Tamam (58 test) |
-| 3–7 | Sırada |
+| 3 — Haftalık rapor ve bütçe ağırlıklandırma (`pusula_core` 0.3.0) | Tamam (63 test) |
+| 4–7 | Sırada |
 
 ## Python referans motoru
 
