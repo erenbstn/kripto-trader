@@ -1,6 +1,6 @@
 # Karar Kaydı — Pusula (çalışma adı)
 
-Son güncelleme: 2026-11-10 · Durum: Faz 0–3 tamamlandı.
+Son güncelleme: 2026-11-10 · Durum: Faz 0–4 tamamlandı.
 
 Bu dosya mimari, teknoloji ve analiz kararlarını gerekçeleriyle tutar. Her karar geri alınabilir;
 değişirse eskisi silinmez, "değişti" notuyla kalır.
@@ -178,6 +178,9 @@ Tutar gösterimi kullanıcının girdiği bütçeyle çarpılarak yapılır; uyg
 - Yazı tipi: sistem yazı tipi (çalışma anında font indirme yok; gizlilik ve çevrimdışı çalışma).
 - Bildirim kanalları: Sinyal (yüksek), Sonuç (yüksek), Rapor (normal), Sistem (düşük). Aynı varlık için
   10 dk içinde birleştirme, sessiz saatlerde kuyruğa alıp tek özet, günlük üst sınır, tekrar anahtarı.
+- **Faz 4 uygulama detayları (2026-11-10):**
+  - Android Gradle Plugin 9.1 / Kotlin 2.4 ile üçüncü parti arka plan eklentilerinde oluşabilecek derleme uyumsuzluklarını önlemek için WorkManager (`androidx.work:work-runtime-ktx:2.10.0`), kesin alarmlar (`AlarmManager.setExactAndAllowWhileIdle`) ve "Canlı İzleme" ön plan servisi (`PusulaLiveMonitorService`, `foregroundServiceType="dataSync"`) doğrudan yerel Kotlin katmanında (`MainActivity.kt`) yazıldı ve `MethodChannel('app.pusula/background')` üzerinden Dart (`BackgroundScheduler`) ile bağlandı.
+  - Kalıcı depolama (`StorageBundle`): Android'de `sqflite` (`pusula_local.db`) kullanılır; Web önizlemesinde ve birim testlerinde otomatik olarak bellek içi depolara (`StorageBundle.inMemory()`) düşer. JSON dışa/içe aktarım (`exportToJson` / `importFromJson`) tüm ayarları, sinyal günlüğünü ve haftalık raporları kapsar.
 
 ---
 

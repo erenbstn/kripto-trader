@@ -9,7 +9,7 @@ doğrulanamadığı yazılır.
 | 1 | `pusula_core` iskeleti; veri katmanı (sağlayıcı soyutlaması, yedekleme, önbellek, hız sınırı); BIST takvimi (seans, tatil, yarım gün, fiyat marjı, lot); BIST evreni | Sahte HTTP ile sağlayıcı ve yedekleme testleri; takvim testleri; bir canlı duman testi | **Tamam** (40 test; canlı duman testi 2026-11-10) |
 | 2 | Analiz çekirdeği (göstergeler, 6 kurulum, rejim, çok dilimli teyit, çıkış planı, Monte Carlo); sinyal günlüğü ve sonuç takibi | Sentetik mumlarla birim testler; Python referansıyla gösterge karşılaştırması; sinyal yaşam döngüsü testi | **Tamam** (58 test) |
 | 3 | Haftalık rapor: geçen hafta sonucu, yeni öneriler + ağırlıklar, kısa vade raporu (kripto/BIST ayrı) | Sentetik günlükten rapor üretimi; ilk haftada "henüz veri yok"; ağırlık sınırı testleri | **Tamam** (63 test) |
-| 4 | Flutter iskeleti, depolama, WorkManager + alarm + canlı izleme servisi, yerel bildirimler | Uygulama derlenir; zamanlayıcı ve bildirim mantığı birim testli; APK üretilir | Bekliyor |
+| 4 | Flutter iskeleti, depolama, WorkManager + alarm + canlı izleme servisi, yerel bildirimler | Uygulama derlenir; zamanlayıcı ve bildirim mantığı birim testli; APK üretilir | **Tamam** (8 uygulama testi + APK derlemesi) |
 | 5 | Arayüz ("GÜNDÜZ"), 3D halka, ekranlar, animasyon azaltma | Widget testleri; web önizlemede görsel kontrol; erişilebilirlik denetimi | Bekliyor |
 | 6 | Kendini geliştirme: günlükten öneri, sürümlü strateji yapılandırması, geri alma, 30 sinyal kuralı | Az veride değişiklik yapmadığını gösteren testler; sürüm geri alma testi | Bekliyor |
 | 7 | Yayına hazırlık: gizlilik metni, uyarılar, çok kullanıcı denetimi, Play beyan listesi | Kontrol listesi; açık kalan hukuki/lisans kısıtları yazılı | Bekliyor |

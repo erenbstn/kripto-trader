@@ -7,9 +7,8 @@ Bu depo üç şeyi barındırır:
 
 1. **Python referans motoru** (`main.py`, `agents/`): 11 ajanlı, sıfır bağımlılıklı kripto analiz motoru.
    Mobil uygulamanın analiz çekirdeği için başvuru kaynağıdır.
-2. **`pusula_core/`**: mobil uygulamanın saf Dart analiz çekirdeği (şu an veri katmanı, BIST takvimi ve evreni).
-3. **Mobil uygulama** (henüz başlamadı): Flutter + Dart; Borsa İstanbul ve kriptoyu kapsayan, telefonda
-   çalışan, yerel bildirim gönderen uygulama. Kararlar: [docs/kararlar.md](docs/kararlar.md),
+2. **`pusula_core/`**: mobil uygulamanın saf Dart analiz çekirdeği (veri katmanı, BIST takvimi/evreni, göstergeler, 6 kurulum, Monte Carlo, sinyal günlüğü, haftalık rapor).
+3. **`pusula_app/`**: Flutter (Android + Web önizleme) uygulaması; SQLite kalıcı depolama, yerel bildirim motoru ve Android arka plan zamanlayıcısı. Kararlar: [docs/kararlar.md](docs/kararlar.md),
    plan: [docs/plan.md](docs/plan.md), sürümler: [docs/degisiklik-gunlugu.md](docs/degisiklik-gunlugu.md).
 
 ## Durum
@@ -20,7 +19,8 @@ Bu depo üç şeyi barındırır:
 | 1 — Veri katmanı, BIST takvimi ve evreni | Tamam |
 | 2 — Analiz çekirdeği ve sinyal günlüğü (`pusula_core` 0.2.0) | Tamam (58 test) |
 | 3 — Haftalık rapor ve bütçe ağırlıklandırma (`pusula_core` 0.3.0) | Tamam (63 test) |
-| 4–7 | Sırada |
+| 4 — Flutter iskeleti, depolama, arka plan, yerel bildirimler ve APK (`pusula_app` 0.1.0) | Tamam (8 test + APK) |
+| 5–7 | Sırada |
 
 ## Python referans motoru
 
@@ -64,4 +64,15 @@ python -m unittest discover -s tests   # testler (sentetik veri, ağ gerekmez)
 - Dart çekirdeği: `cd pusula_core; dart pub get; dart analyze; dart test`.
 - Canlı duman testi (ağ gerekir, birim testlerin parçası değil): `dart run tool/smoke.dart --all`.
 - Testler `config.json` dosyasını okur; yapılandırma şeması değişirse testleri güncelleyin.
-- APK derleme ve telefona yükleme adımları Faz 4'te buraya eklenecek.
+- APK derleme ve telefona yükleme adımları:
+  ```powershell
+  . .\araclar\ortam.ps1
+  cd pusula_app
+  flutter pub get
+  flutter analyze
+  flutter test
+  flutter build apk --debug
+  # Telefon USB hata ayıklama ile bağlıysa:
+  adb devices
+  adb install -r build\app\outputs\flutter-apk\app-debug.apk
+  ```

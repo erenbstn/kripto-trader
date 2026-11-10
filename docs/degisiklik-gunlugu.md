@@ -2,6 +2,16 @@
 
 Uygulama ve strateji sürümleri burada tutulur. Her kayıt: ne değişti, neden, nasıl geri alınır.
 
+## pusula_app 0.1.0 — 2026-11-10 (Faz 4)
+
+**Eklendi** (`pusula_app/`)
+- Flutter Android + Web projesi (`app.pusula.pusula_app`), `pusula_core` yerel paket bağlantısı, `flutter_riverpod`, `sqflite`.
+- `StorageBundle` (`lib/src/storage/`): `SqliteCandleCache`, `SqliteSignalJournalStore`, `SqliteWeeklyReportStore`, `SqliteSettingsStore` ve JSON dışa/içe aktarım (`exportToJson` / `importFromJson`). Web ve test ortamında otomatik bellek içi (`inMemory`) yedekleme.
+- `NotificationCoordinator` ve `NotificationFormatter` (`lib/src/notifications/`): 4 kanal (`Sinyal`, `Sonuç`, `Rapor`, `Sistem`), yerel Android `NotificationManager` köprüsü, Türkçe virgüllü bildirim biçimlendiricileri, aynı sembol için 10 dk birleştirme, sessiz saat kuyruğu + sabah tek özet bildirimi, günlük üst sınır ve tekrar anahtarı (`dedupKey`).
+- `BackgroundScheduler` (`lib/src/background/`) ve yerel Kotlin servisleri (`MainActivity.kt`): WorkManager 15 dk periyodik tarama, Pazar 09:00 TRT ve BIST açılış/kapanış kesin alarmları (`AlarmManager`), isteğe bağlı "Canlı İzleme" ön plan servisi (`PusulaLiveMonitorService`, `dataSync`) ve üretici (Samsung/Xiaomi/Oppo/Pixel) pil optimizasyonu muafiyet rehberi.
+
+**Geri alma:** `git revert` ile önceki commit'e dönülebilir.
+
 ## pusula_core 0.3.0 — 2026-11-10 (Faz 3)
 
 **Eklendi** (`pusula_core/lib/src/report/`)
