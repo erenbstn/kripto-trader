@@ -97,5 +97,26 @@ void main() {
       expect(find.byKey(const ValueKey('donut_painter_2d')), findsOneWidget);
       expect(find.textContaining('2D Sade Mod'), findsOneWidget);
     });
+
+    testWidgets('Faz 7 — Ayar sekmesinde Gizlilik ve Play Beyanı penceresi açılır', (tester) async {
+      setPhoneViewport(tester);
+      await tester.pumpWidget(const ProviderScope(child: PusulaApp()));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Ayar'));
+      await tester.pumpAndSettle();
+
+      final privacyBtn = find.byKey(const Key('btn_privacy_and_legal'));
+      await tester.scrollUntilVisible(privacyBtn, 250);
+      await tester.ensureVisible(privacyBtn);
+      await tester.pumpAndSettle();
+      await tester.tap(privacyBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Gizlilik, Lisans ve Play Beyanı'), findsOneWidget);
+      expect(find.textContaining('SPK mevzuatına tabi olabilir'), findsOneWidget);
+      await tester.tap(find.text('Kapat'));
+      await tester.pumpAndSettle();
+    });
   });
 }

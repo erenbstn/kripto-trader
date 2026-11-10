@@ -12,7 +12,7 @@ doğrulanamadığı yazılır.
 | 4 | Flutter iskeleti, depolama, WorkManager + alarm + canlı izleme servisi, yerel bildirimler | Uygulama derlenir; zamanlayıcı ve bildirim mantığı birim testli; APK üretilir | **Tamam** (8 uygulama testi + APK derlemesi) |
 | 5 | Arayüz ("GÜNDÜZ"), 3D halka, ekranlar, animasyon azaltma | Widget testleri; web önizlemede görsel kontrol; erişilebilirlik denetimi | **Tamam** (11 uygulama/widget testi + `flutter build web`) |
 | 6 | Kendini geliştirme: günlükten öneri, sürümlü strateji yapılandırması, geri alma, 30 sinyal kuralı | Az veride değişiklik yapmadığını gösteren testler; sürüm geri alma testi | **Tamam** (66 çekirdek testi) |
-| 7 | Yayına hazırlık: gizlilik metni, uyarılar, çok kullanıcı denetimi, Play beyan listesi | Kontrol listesi; açık kalan hukuki/lisans kısıtları yazılı | Bekliyor |
+| 7 | Yayına hazırlık: gizlilik metni, uyarılar, çok kullanıcı denetimi, Play beyan listesi | Kontrol listesi; açık kalan hukuki/lisans kısıtları yazılı | **Tamam** (`docs/gizlilik-ve-play-beyan.md` + tüm testler) |
 
 ## Cihazsız doğrulanamayacaklar (her fazda yinelenecek)
 

@@ -660,4 +660,9 @@ class PusulaController extends StateNotifier<PusulaAppState> {
     if (prev == null) return;
     await _applySettings(state.settings.copyWith(activeStrategyVersion: prev.version));
   }
+
+  /// Kullanıcı ayarlarını varsayılan başlangıç değerlerine sıfırlar (Faz 7.3 çok kullanıcı denetimi).
+  Future<void> resetSettingsToDefault() async {
+    await _applySettings(const AppSettings());
+  }
 }

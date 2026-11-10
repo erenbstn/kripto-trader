@@ -1,6 +1,6 @@
 # Karar Kaydı — Pusula (çalışma adı)
 
-Son güncelleme: 2026-11-10 · Durum: Faz 0–6 tamamlandı.
+Son güncelleme: 2026-11-10 · Durum: Faz 0–7 tamamlandı.
 
 Bu dosya mimari, teknoloji ve analiz kararlarını gerekçeleriyle tutar. Her karar geri alınabilir;
 değişirse eskisi silinmez, "değişti" notuyla kalır.
@@ -219,6 +219,7 @@ tarayıcıda, gerçek davranış telefonda sınanır. APK derleme ve yükleme ad
   Geliştirici hesabı tek seferlik ücretlidir (para harcatır → yayın anında sorulacak).
 - **Hukuki not (hukukçu görüşü değildir):** Türkiye'de başkalarına yönelik al/sat önerisi yayımlamak SPK
   düzenlemelerine tabi olabilir. Uygulamayı başkalarına açmadan önce bu konunun bir uzmana danışılması gerekir.
+- **Faz 7 yayına hazırlık ve beyan listesi (2026-11-10):** Ayrıntılı gizlilik metni, bağlanılan açık uçlar, veri lisans sınırları, SPK notu, çok kullanıcı denetimi ve Google Play Console beyan kontrol listesi `docs/gizlilik-ve-play-beyan.md` dosyasına ve uygulama içi `Ayarlar` ekranına eklendi. Google Play geliştirici hesabı ücretli olduğu için (Kısıt 4: sıfır para) hesap açılışı yapılmadı; yalnızca teknik beyan listesi hazırlandı.
 
 ---
 

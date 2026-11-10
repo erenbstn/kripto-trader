@@ -273,7 +273,7 @@ class AyarScreen extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 12),
-        // 7. Sürüm ve Değişiklik Günlüğü Özeti
+        // 7. Sürüm, Gizlilik Metni ve Yasal / Play Beyan Özeti (Faz 7)
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -281,20 +281,65 @@ class AyarScreen extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Sürüm ve Değişiklik Günlüğü · Strateji v${s.activeStrategyVersion}',
+                  'Sürüm, Gizlilik ve Yasal Beyanlar · Strateji v${s.activeStrategyVersion}',
                   style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 6),
                 const Text(
-                  '• pusula_app 0.2.0 / pusula_core 0.3.0: GÜNDÜZ arayüzü, 3D halka, 4 sekme, SQLite depolama, yerel bildirim birleştirme.\n'
-                  '• Strateji 2.0.0: Blok önyüklemeli Monte Carlo, BTC/XU100 rejim tespiti, çoklu zaman dilimi teyidi, BIST fiyat adımı ve 15 dk gecikme koruması.',
+                  '• Gizlilik: Kişisel veri, analitik, konum veya borsa/aracı kurum API anahtarı toplanmaz; tüm veriler yalnızca cihazdaki SQLite veritabanında tutulur.\n'
+                  '• Veri Kaynağı ve Lisans: BIST verileri ~15 dk gecikmelidir (Yahoo / İş Yatırım); ticari yeniden dağıtım lisans gerektirir.\n'
+                  '• Hukuki Not: Yatırım tavsiyesi değildir; Türkiye\'de üçüncü kişilere öneri yayımlamak SPK düzenlemelerine tabi olabilir.',
                   style: TextStyle(fontSize: 12, height: 1.4),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    OutlinedButton.icon(
+                      key: const Key('btn_privacy_and_legal'),
+                      onPressed: () => _showPrivacyDialog(context),
+                      icon: const Icon(Icons.privacy_tip_outlined, size: 16),
+                      label: const Text('Gizlilik ve Play Beyanı'),
+                    ),
+                    OutlinedButton.icon(
+                      key: const Key('btn_reset_defaults'),
+                      onPressed: controller.resetSettingsToDefault,
+                      icon: const Icon(Icons.restart_alt, size: 16),
+                      label: const Text('Ayarları Sıfırla'),
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  void _showPrivacyDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Gizlilik, Lisans ve Play Beyanı'),
+        content: const SingleChildScrollView(
+          child: Text(
+            '1. Gizlilik: Pusula hiçbir kişisel kimlik, hesap, konum, reklam kimliği veya aracı kurum API anahtarı istemez ve toplamaz. Bütçe tutarı yalnızca cihazda yerel olarak saklanır.\n\n'
+            '2. Bağlanılan Açık Uçlar: Binance açık piyasa verisi (data-api.binance.vision), Yahoo Finance (.IS / -USD) ve İş Yatırım.\n\n'
+            '3. Yasal Uyarı ve SPK Notu: Üretilen hiçbir içerik yatırım tavsiyesi değildir. Türkiye\'de başkalarına yönelik al/sat önerisi yayımlamak SPK mevzuatına tabi olabilir; yayın öncesi uzman görüşü alınmalıdır.\n\n'
+            '4. Veri Lisansı: Yahoo ve BIST verileri yalnızca kişisel kullanım içindir; ticari yeniden dağıtım Borsa İstanbul lisansına tabidir.\n\n'
+            '5. Google Play Beyanı: Finansal işlem/cüzdan sunmaz (yalnızca analiz); Veri Güvenliği: Toplanan/paylaşılan veri yok; Ön plan servisi: dataSync (kullanıcı isteğiyle).',
+            style: TextStyle(fontSize: 13, height: 1.4),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Kapat'),
+          ),
+        ],
+      ),
     );
   }
 }

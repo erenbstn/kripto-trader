@@ -2,6 +2,16 @@
 
 Uygulama ve strateji sürümleri burada tutulur. Her kayıt: ne değişti, neden, nasıl geri alınır.
 
+## pusula_app 1.0.0 — 2026-11-10 (Faz 7 — Yayına Hazırlık)
+
+**Eklendi** (`docs/gizlilik-ve-play-beyan.md` ve `pusula_app/lib/src/screens/ayar_screen.dart`)
+- Gizlilik metni (bağlanılan açık uçlar, yerel SQLite'ta tutulan veriler, asla toplanmayan veriler).
+- Yasal uyarılar, BIST/Yahoo veri lisans ve gecikme sınırları, SPK düzenlemeleri notu ve eski Telegram bot token'ını `@BotFather` üzerinden iptal etme hatırlatması.
+- Çok kullanıcı denetimi ve ayarları varsayılana sıfırlama (`resetSettingsToDefault`).
+- Google Play Console beyan kontrol listesi (Finansal Özellikler Beyanı, Veri Güvenliği Formu, Ön Plan Servisi `dataSync`, Hedef SDK 36).
+
+**Geri alma:** `git revert` ile önceki commit'e dönülebilir.
+
 ## pusula_core 0.4.0 & pusula_app 0.3.0 — 2026-11-10 (Faz 6)
 
 **Eklendi** (`pusula_core/lib/src/learning/` ve `pusula_app/lib/src/screens/ayar_screen.dart`)
