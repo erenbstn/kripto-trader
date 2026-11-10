@@ -1,0 +1,12 @@
+.env
+.env.*
+__pycache__/
+*.pyc
+data/
+*.stackdump
+build/
+.dart_tool/
+*.keystore
+*.jks
+key.properties
+local.properties
