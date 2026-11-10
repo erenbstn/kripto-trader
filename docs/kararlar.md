@@ -1,6 +1,6 @@
 # Karar Kaydı — Pusula (çalışma adı)
 
-Son güncelleme: 2026-11-10 · Durum: Faz 0 ve Faz 1 tamamlandı.
+Son güncelleme: 2026-11-10 · Durum: Faz 0, Faz 1 ve Faz 2 tamamlandı.
 
 Bu dosya mimari, teknoloji ve analiz kararlarını gerekçeleriyle tutar. Her karar geri alınabilir;
 değişirse eskisi silinmez, "değişti" notuyla kalır.
@@ -237,6 +237,11 @@ okunmadı, değiştirilmedi; yeni motora girdi olmayacak.
 **Aşırı uyum kuralı:** strateji başına en az 30 kapanmış sinyal birikmeden parametre değişmez. Daha az
 veriyle yalnızca "gözlem" yazılır, belirsizlik (Wilson aralığı) açıkça gösterilir. Her değişiklik
 `docs/degisiklik-gunlugu.md` içinde sürümlenir ve önceki sürüme dönülebilir.
+
+### Faz 2 uygulama detayları (K8 — 2026-11-10)
+- **Blok önyükleme (block bootstrap):** `MonteCarloSimulator` varsayılan olarak 4 ardışık mumluk bloklar (`blockSize = 4`) ve 2.500 tekrar kullanır; ortalama R için %95 güven aralığı (`±1.96 × SE`) hesaplanır.
+- **Güven skoru (0–100) bileşen ağırlıkları:** Kurulum çakışması (25), hacim/alıcı teyidi (15), piyasa rejimi uyumu (15), üst zaman dilimi uyumu (15), Monte Carlo beklentisi (15), Ödül/Risk oranı (15).
+- **Kademeli hedef ve başabaş muhasebesi:** `target1` (1R) görüldüğünde durum `hedef1` olur ve stop giriş fiyatına çekilir; sonrasında başabaş stop çalışırsa ilk kademenin kârı korunarak `+0.5R` gerçekleşmiş sayılır. Aynı mumda hem stop hem hedef görülürse muhafazakâr olarak stop sayılır.
 
 ---
 

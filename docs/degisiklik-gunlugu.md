@@ -2,6 +2,21 @@
 
 Uygulama ve strateji sürümleri burada tutulur. Her kayıt: ne değişti, neden, nasıl geri alınır.
 
+## pusula_core 0.2.0 — 2026-11-10 (Faz 2, Strateji 2.0.0)
+
+**Eklendi** (`pusula_core/lib/src/analysis/` ve `lib/src/journal/`)
+- `Indicators`: Wilder RSI, ATR (Python referans motoruyla birebir uyumlu), SMA, EMA, VWAP, ADX ve gerçekleşen oynaklık.
+- `RegimeDetector`: BTCUSDT ve XU100 için EMA50/200 eğimi + ADX + oynaklık ile Boğa / Yatay / Ayı rejim tespiti; Ayı rejiminde kırılım kurulumlarını devre dışı bırakma ve risk çarpanını 0,5×'e düşürme.
+- `SetupScanner`: 6 kurulum (`orb`, `breakout_20d`, `bull_flag`, `reclaim_ma20`, `oversold_bounce`, `vwap_breakout`); BIST'te 5 dk scalp engeli ve fiyat adımına yuvarlanmış giriş bölgesi.
+- `MultiTimeframeAnalyzer`: sinyal dilimi + bir üst zaman dilimi trend teyidi.
+- `ExitPlanner`: yapı/ATR tabanlı stop, kademeli hedefler (`1R` ve `2R`), başabaş tetikleyici, süre sınırı, geçersiz kılma koşulu ve BIST tavan/taban yakınlık uyarısı.
+- `MonteCarloSimulator`: blok önyükleme (`blockSize = 4`), %95 güven aralığı, sabitlenebilir tohum. `replay_historical_sessions` taşınmadı.
+- `NewsAnalyzer` ve `WhaleAnalyzer`: yanlış pozitif üreten genel takma adlar (`link`, `sol`, `gold`, `eth`, `default`) daraltıldı; emir defteri dengesi vetodan çıkarılıp bilgi alanına alındı; vadeli fonlama vetosu korundu.
+- `ConfidenceScorer` ve `SignalEngine`: 6 bileşenli 0–100 güven skoru ve uçtan uca sinyal değerlendirme hunisi.
+- `SignalJournalStore` ve `SignalOutcomeTracker`: kalıcı sinyal kaydı ve `açık → hedef1 → hedef2 | stop | süre doldu | geçersiz` yaşam döngüsü (aynı mumda stop öncelikli).
+
+**Geri alma:** `git revert` ile önceki commit'e dönülebilir.
+
 ## pusula_core 0.1.0 — 2026-11-10 (Faz 1)
 
 **Eklendi** (saf Dart paketi, `pusula_core/`)
