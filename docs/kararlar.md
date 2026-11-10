@@ -1,6 +1,6 @@
 # Karar Kaydı — Pusula (çalışma adı)
 
-Son güncelleme: 2026-11-10 · Durum: Faz 0–4 tamamlandı.
+Son güncelleme: 2026-11-10 · Durum: Faz 0–5 tamamlandı.
 
 Bu dosya mimari, teknoloji ve analiz kararlarını gerekçeleriyle tutar. Her karar geri alınabilir;
 değişirse eskisi silinmez, "değişti" notuyla kalır.
@@ -181,6 +181,9 @@ Tutar gösterimi kullanıcının girdiği bütçeyle çarpılarak yapılır; uyg
 - **Faz 4 uygulama detayları (2026-11-10):**
   - Android Gradle Plugin 9.1 / Kotlin 2.4 ile üçüncü parti arka plan eklentilerinde oluşabilecek derleme uyumsuzluklarını önlemek için WorkManager (`androidx.work:work-runtime-ktx:2.10.0`), kesin alarmlar (`AlarmManager.setExactAndAllowWhileIdle`) ve "Canlı İzleme" ön plan servisi (`PusulaLiveMonitorService`, `foregroundServiceType="dataSync"`) doğrudan yerel Kotlin katmanında (`MainActivity.kt`) yazıldı ve `MethodChannel('app.pusula/background')` üzerinden Dart (`BackgroundScheduler`) ile bağlandı.
   - Kalıcı depolama (`StorageBundle`): Android'de `sqflite` (`pusula_local.db`) kullanılır; Web önizlemesinde ve birim testlerinde otomatik olarak bellek içi depolara (`StorageBundle.inMemory()`) düşer. JSON dışa/içe aktarım (`exportToJson` / `importFromJson`) tüm ayarları, sinyal günlüğünü ve haftalık raporları kapsar.
+- **Faz 5 uygulama detayları (2026-11-10):**
+  - `Donut3DPainter` (`pusula_app/lib/src/widgets/donut_3d_chart.dart`): Eliptik eğim (`tilt = 0.62`) ve 22 px dikey ekstrüzyon ile dış/iç yan duvarları ~5 derecelik dilimlere bölerek `sin(midAngle)` derinlik sırasına (Painter's Algorithm) göre arkadan öne doğru çizer; üst yüz eliptik yaylarla kapatılır. `reduceAnimations` veya `batterySaverMode` (veya sistem `disableAnimations`) aktifse otomatik olarak düz 2D halkaya (`tilt = 1.0`, `extrusion = 0`) geçer.
+  - 4 alt sekme (`Özet · Öneri · Sinyal · Ayar`) `IndexedStack` ile korunur; her ekranda `DisclaimerBanner` ("Yatırım tavsiyesi değildir...") sabit olarak en üstte yer alır.
 
 ---
 

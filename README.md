@@ -20,7 +20,8 @@ Bu depo üç şeyi barındırır:
 | 2 — Analiz çekirdeği ve sinyal günlüğü (`pusula_core` 0.2.0) | Tamam (58 test) |
 | 3 — Haftalık rapor ve bütçe ağırlıklandırma (`pusula_core` 0.3.0) | Tamam (63 test) |
 | 4 — Flutter iskeleti, depolama, arka plan, yerel bildirimler ve APK (`pusula_app` 0.1.0) | Tamam (8 test + APK) |
-| 5–7 | Sırada |
+| 5 — "GÜNDÜZ" arayüzü, 3D bütçe halkası ve 4 ekran (`pusula_app` 0.2.0) | Tamam (11 test + Web önizleme) |
+| 6–7 | Sırada |
 
 ## Python referans motoru
 

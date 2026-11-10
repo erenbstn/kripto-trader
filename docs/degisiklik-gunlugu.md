@@ -2,6 +2,19 @@
 
 Uygulama ve strateji sürümleri burada tutulur. Her kayıt: ne değişti, neden, nasıl geri alınır.
 
+## pusula_app 0.2.0 — 2026-11-10 (Faz 5)
+
+**Eklendi** (`pusula_app/lib/src/`)
+- `GunduzTheme` ve `GunduzColors` (`theme/gunduz_theme.dart`): `#F6F4EF` zemin, `#FFFFFF` kartlar, `#1B1B1B` metin, `#5B4BDB` / `#3B2FA8` vurgu, `#D85A30` mercan ikincil vurgu, 14 px köşe, ince çizgili kartlar, açık (varsayılan) ve koyu tema, `DisclaimerBanner`, `DataProvenanceBadge` ve `+`/`-` işaretli `SignedMetricChip`.
+- `Donut3DChart` ve `Donut3DPainter` (`widgets/donut_3d_chart.dart`): derinlik sıralamalı (Painter's Algorithm) eliptik 3D bütçe ağırlık halkası, sürükleyerek döndürme, dilime dokununca varlık detay penceresi, pil tasarrufu / animasyon azaltmada düz 2D sade mod.
+- 4 alt gezinme ekranı (`screens/`):
+  - `OzetScreen`: haftalık özet, 3D halka, açık sinyaller, son yerel bildirimler.
+  - `OneriScreen`: önce geçen hafta sonucu (`"Geçen hafta raporu: henüz veri yok"`), sonra BIST ve Kripto yeni öneri kartları (`RecommendationDetailCard`), ayrıca Geçmiş arşivi ve ileriye dönük performans eğrisi.
+  - `SinyalScreen`: Kripto ve BIST ayrı kısa vade haftalık raporları + canlı sinyal akışı.
+  - `AyarScreen`: bütçe, risk iştahı, tema/animasyon/pil tasarrufu, bildirim kanalları, sessiz saatler, OEM pil muafiyet rehberi, `ProviderHealth` durumu.
+
+**Geri alma:** `git revert` ile önceki commit'e dönülebilir.
+
 ## pusula_app 0.1.0 — 2026-11-10 (Faz 4)
 
 **Eklendi** (`pusula_app/`)

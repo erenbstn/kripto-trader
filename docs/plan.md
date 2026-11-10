@@ -10,7 +10,7 @@ doğrulanamadığı yazılır.
 | 2 | Analiz çekirdeği (göstergeler, 6 kurulum, rejim, çok dilimli teyit, çıkış planı, Monte Carlo); sinyal günlüğü ve sonuç takibi | Sentetik mumlarla birim testler; Python referansıyla gösterge karşılaştırması; sinyal yaşam döngüsü testi | **Tamam** (58 test) |
 | 3 | Haftalık rapor: geçen hafta sonucu, yeni öneriler + ağırlıklar, kısa vade raporu (kripto/BIST ayrı) | Sentetik günlükten rapor üretimi; ilk haftada "henüz veri yok"; ağırlık sınırı testleri | **Tamam** (63 test) |
 | 4 | Flutter iskeleti, depolama, WorkManager + alarm + canlı izleme servisi, yerel bildirimler | Uygulama derlenir; zamanlayıcı ve bildirim mantığı birim testli; APK üretilir | **Tamam** (8 uygulama testi + APK derlemesi) |
-| 5 | Arayüz ("GÜNDÜZ"), 3D halka, ekranlar, animasyon azaltma | Widget testleri; web önizlemede görsel kontrol; erişilebilirlik denetimi | Bekliyor |
+| 5 | Arayüz ("GÜNDÜZ"), 3D halka, ekranlar, animasyon azaltma | Widget testleri; web önizlemede görsel kontrol; erişilebilirlik denetimi | **Tamam** (11 uygulama/widget testi + `flutter build web`) |
 | 6 | Kendini geliştirme: günlükten öneri, sürümlü strateji yapılandırması, geri alma, 30 sinyal kuralı | Az veride değişiklik yapmadığını gösteren testler; sürüm geri alma testi | Bekliyor |
 | 7 | Yayına hazırlık: gizlilik metni, uyarılar, çok kullanıcı denetimi, Play beyan listesi | Kontrol listesi; açık kalan hukuki/lisans kısıtları yazılı | Bekliyor |
 
