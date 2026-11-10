@@ -1,6 +1,6 @@
 # Karar Kaydı — Pusula (çalışma adı)
 
-Son güncelleme: 2026-11-10 · Durum: Faz 0 tamamlandı, Faz 1 araç kurulum onayı bekliyor.
+Son güncelleme: 2026-11-10 · Durum: Faz 0 ve Faz 1 tamamlandı.
 
 Bu dosya mimari, teknoloji ve analiz kararlarını gerekçeleriyle tutar. Her karar geri alınabilir;
 değişirse eskisi silinmez, "değişti" notuyla kalır.
@@ -98,7 +98,7 @@ Birincil Binance açık piyasa verisi (`data-api.binance.vision`, gecikmesiz, an
 | Kaynak | Veri | Gecikme | Limit / kararlılık | Kullanım koşulu | Rol |
 |---|---|---|---|---|---|
 | Yahoo Finance `.IS` (chart ucu) | Günlük + gün içi OHLCV | ~15 dk | Resmî API değil; belgesiz kısıtlama, ara ara 429 | Kişisel, ticari olmayan kullanım; yeniden dağıtım yasak | **Birincil** |
-| İş Yatırım açık JSON uçları | Günlük OHLCV, temel oranlar | Gün sonu | Belgesiz, değişebilir | Açık lisans yok | **Yedek (günlük)** — Faz 1'de canlı doğrulanacak |
+| İş Yatırım açık JSON ucu (`HisseTekil`) | Günlük en yüksek/en düşük/kapanış, TL hacim, piyasa değeri (açılış yok) | Gün sonu | Belgesiz, değişebilir | Açık lisans yok | **Yedek (günlük)** — 2026-11-10'da canlı doğrulandı |
 | Stooq CSV | Günlük | Gün sonu | 2026'dan beri CAPTCHA ile alınan anahtar + günlük kota | Kişisel | **Elendi** (otomatikleştirilemez) |
 | KAP | Bildirimler (fiyat değil) | Anlık | Resmî ücretsiz API yok | Kamuya açık | Haber/olay vetosu için, Faz 2'de değerlendirilecek |
 | TCMB EVDS | USD/TRY, faiz, enflasyon | Günlük | Sağlam | Ücretsiz ama kişiye özel anahtar ister | İsteğe bağlı; anahtarı kullanıcı girer, cihazın güvenli deposunda durur |
@@ -127,6 +127,17 @@ bir kaynak şu an görünmüyor. Bu, "sıfır para" kısıtıyla yayın hedefi a
   12:30/12:40; 2026 resmî tatil tablosu gömülü, her yıl güncellenir. ±%10 günlük fiyat marjı, lot = 1 pay, T+2.
 
 ---
+
+### Faz 1 canlı doğrulama (2026-11-10)
+
+- Kripto: 10 varlığın hepsi geldi; 8'i Binance spot, `XAGUSDT` ve `SIRENUSDT` futures ucundan.
+- BIST: 75 adayın 75'i Yahoo `.IS` üzerinden geldi (77 istek, hata ve hız sınırı yok; istekler arası 350 ms).
+- Likidite süzgeci (20 günlük ortalama en az 300 mn TL, ilk 40): 40 hisse seçildi; 33'ü düşük likidite,
+  1'i tavan/taban sıklığı, 2'si sıra dışı kalarak elendi. En likit: ASELS, THYAO, AKBNK.
+- Yahoo saatlik BIST mumları 09:30 TRT hizalıdır; seans kapanışına göre kırpılır.
+- Yahoo `exchangeDataDelayedBy` alanını boş döndürüyor; 15 dk gecikme varsayımı korunur ve bir mum,
+  bitişinden 15 dk sonra "kapanmış" sayılır.
+- İş Yatırım açılış fiyatı vermiyor; açılış önceki kapanıştan türetilir, seri "yaklaşık açılış" işaretlenir.
 
 ## K3. Haftalık öneri: ağırlık ve sınırlar
 
@@ -179,7 +190,12 @@ Tutar gösterimi kullanıcının girdiği bütçeyle çarpılarak yapılır; uyg
 | Android SDK (cmdline-tools, platform, build-tools) | **Yok** |
 | Boş disk | 42 GB |
 
-Kurulması gereken (kullanıcı onayı bekliyor): Flutter SDK (~1 GB indirme, ~3 GB disk), Temurin JDK 17
+**Kuruldu (2026-11-10, kullanıcı onayıyla):** `C:\Users\eren_\dev` altına Flutter stable (Dart 3.13.7),
+Temurin JDK 17.0.21 (SHA-256 doğrulandı), Android komut satırı araçları + platform 36 + build-tools 36.
+Yönetici yetkisi kullanılmadı, sistem PATH'i ve kayıt defteri değiştirilmedi; ortam `araclar/ortam.ps1`
+(veya `ortam.sh`) ile oturum bazında açılır. Android SDK lisans sözleşmeleri kurulum sırasında kabul edildi.
+
+İlk plan: Flutter SDK (~1 GB indirme, ~3 GB disk), Temurin JDK 17
 (~0,3 GB), Android komut satırı araçları + platform + build-tools (~1,2 GB), ilk derlemede Gradle/pub
 önbelleği (~1,5–2 GB). Toplam ~6–7 GB. Android Studio ve emülatör gerekmez; arayüz Flutter web çıktısıyla
 tarayıcıda, gerçek davranış telefonda sınanır. APK derleme ve yükleme adımları kurulumdan sonra README'ye yazılacak.

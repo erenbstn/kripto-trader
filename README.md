@@ -3,11 +3,12 @@
 > **Yatırım tavsiyesi değildir.** Sistem gerçek emir açmaz, borsa/aracı kurum anahtarı kullanmaz;
 > yalnızca analiz ve sinyal üretir.
 
-Bu depo iki şeyi barındırır:
+Bu depo üç şeyi barındırır:
 
 1. **Python referans motoru** (`main.py`, `agents/`): 11 ajanlı, sıfır bağımlılıklı kripto analiz motoru.
    Mobil uygulamanın analiz çekirdeği için başvuru kaynağıdır.
-2. **Mobil uygulama** (henüz başlamadı): Flutter + Dart; Borsa İstanbul ve kriptoyu kapsayan, telefonda
+2. **`pusula_core/`**: mobil uygulamanın saf Dart analiz çekirdeği (şu an veri katmanı, BIST takvimi ve evreni).
+3. **Mobil uygulama** (henüz başlamadı): Flutter + Dart; Borsa İstanbul ve kriptoyu kapsayan, telefonda
    çalışan, yerel bildirim gönderen uygulama. Kararlar: [docs/kararlar.md](docs/kararlar.md),
    plan: [docs/plan.md](docs/plan.md), sürümler: [docs/degisiklik-gunlugu.md](docs/degisiklik-gunlugu.md).
 
@@ -16,7 +17,8 @@ Bu depo iki şeyi barındırır:
 | Faz | Durum |
 |---|---|
 | 0 — Telegram temizliği, token silme | Tamam |
-| 1–7 | Flutter/JDK/Android SDK kurulum onayı bekliyor |
+| 1 — Veri katmanı, BIST takvimi ve evreni | Tamam |
+| 2–7 | Sırada |
 
 ## Python referans motoru
 
@@ -55,6 +57,9 @@ python -m unittest discover -s tests   # testler (sentetik veri, ağ gerekmez)
 
 ## Geliştirici notları
 
-- Git deposu henüz yok; `.gitignore` hazır. `git init` önerilir.
+- Araçlar `C:\Users\eren_\dev` altında (Flutter, JDK 17, Android SDK). Her yeni terminalde önce ortamı açın:
+  PowerShell `. .\araclar\ortam.ps1`, Git Bash `source araclar/ortam.sh`.
+- Dart çekirdeği: `cd pusula_core; dart pub get; dart analyze; dart test`.
+- Canlı duman testi (ağ gerekir, birim testlerin parçası değil): `dart run tool/smoke.dart --all`.
 - Testler `config.json` dosyasını okur; yapılandırma şeması değişirse testleri güncelleyin.
-- APK derleme ve telefona yükleme adımları, araç kurulumu onaylandıktan sonra buraya eklenecek.
+- APK derleme ve telefona yükleme adımları Faz 4'te buraya eklenecek.
