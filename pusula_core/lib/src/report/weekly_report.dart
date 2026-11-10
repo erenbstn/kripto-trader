@@ -412,3 +412,4 @@ class MemoryWeeklyReportStore implements WeeklyReportStore {
     return points;
   }
 }
+

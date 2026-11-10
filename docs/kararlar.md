@@ -1,6 +1,6 @@
 # Karar Kaydı — Pusula (çalışma adı)
 
-Son güncelleme: 2026-11-10 · Durum: Faz 0–5 tamamlandı.
+Son güncelleme: 2026-11-10 · Durum: Faz 0–6 tamamlandı.
 
 Bu dosya mimari, teknoloji ve analiz kararlarını gerekçeleriyle tutar. Her karar geri alınabilir;
 değişirse eskisi silinmez, "değişti" notuyla kalır.
@@ -244,6 +244,10 @@ okunmadı, değiştirilmedi; yeni motora girdi olmayacak.
 **Aşırı uyum kuralı:** strateji başına en az 30 kapanmış sinyal birikmeden parametre değişmez. Daha az
 veriyle yalnızca "gözlem" yazılır, belirsizlik (Wilson aralığı) açıkça gösterilir. Her değişiklik
 `docs/degisiklik-gunlugu.md` içinde sürümlenir ve önceki sürüme dönülebilir.
+
+### Faz 6 uygulama detayları (2026-11-10)
+- `StrategyOptimizer` (`pusula_core/lib/src/learning/strategy_optimizer.dart`): Kapanmış sinyallerden strateji ve rejim bazında kazanma oranı, ortalama R ve %95 Wilson güven aralığı (`WilsonInterval.compute95`) hesaplar.
+- **30 sinyal eşiği (`kMinClosedSignalsForTuning = 30`):** Bir kurulum stratejisinde 30'un altında kapanmış sinyal varsa parametreler kesinlikle değiştirilmez (`canModifyParameters = false`, `proposedVersion = null`); yalnızca Türkçe gözlem metni ve Wilson belirsizlik aralığı üretilir. 30 ve üzeri kapanmış sinyalde istatistiksel olarak zayıf kalan kurulumların güven/hacim eşikleri sıkılaştırılarak yeni bir alt sürüm (`v2.1.0`, `parentVersion = '2.0.0'`) üretilir ve `StrategyVersionStore.rollbackToPrevious()` ile tek dokunuşla geri alınabilir.
 
 ### Faz 2 uygulama detayları (K8 — 2026-11-10)
 - **Blok önyükleme (block bootstrap):** `MonteCarloSimulator` varsayılan olarak 4 ardışık mumluk bloklar (`blockSize = 4`) ve 2.500 tekrar kullanır; ortalama R için %95 güven aralığı (`±1.96 × SE`) hesaplanır.

@@ -25,6 +25,7 @@ export 'src/data/provider.dart';
 export 'src/data/rate_limiter.dart';
 export 'src/data/yahoo_provider.dart';
 export 'src/journal/signal_journal.dart';
+export 'src/learning/strategy_optimizer.dart';
 export 'src/model/candle.dart';
 export 'src/model/market.dart';
 export 'src/report/report_generator.dart';

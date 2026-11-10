@@ -232,7 +232,48 @@ class AyarScreen extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 12),
-        // 6. Sürüm ve Değişiklik Günlüğü Özeti
+        // 6. Kendini Geliştirme, 30 Sinyal Kuralı ve Sürümlü Strateji Ayarları (Faz 6)
+        Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Kendini Geliştirme ve Sürümlü Strateji · v${s.activeStrategyVersion}',
+                        style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                    TextButton.icon(
+                      onPressed: controller.rollbackStrategyVersion,
+                      icon: const Icon(Icons.undo, size: 16),
+                      label: const Text('Geri Al'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  state.optimizationProposal.summaryReportTr,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                for (final st in state.optimizationProposal.statsByStrategy.values.take(3))
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(
+                      '• ${st.observationNoteTr}',
+                      style: const TextStyle(fontSize: 11),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        // 7. Sürüm ve Değişiklik Günlüğü Özeti
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),

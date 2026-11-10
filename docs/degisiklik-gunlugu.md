@@ -2,6 +2,15 @@
 
 Uygulama ve strateji sürümleri burada tutulur. Her kayıt: ne değişti, neden, nasıl geri alınır.
 
+## pusula_core 0.4.0 & pusula_app 0.3.0 — 2026-11-10 (Faz 6)
+
+**Eklendi** (`pusula_core/lib/src/learning/` ve `pusula_app/lib/src/screens/ayar_screen.dart`)
+- `StrategyOptimizer`, `WilsonInterval`, `StrategyPerformanceStats`: sinyal günlüğündeki kapanmış sinyallerden strateji ve rejim bazında kazanma oranı, ortalama R ve Wilson %95 güven aralığı hesabı.
+- `StrategyVersionRecord`, `StrategyVersionStore`, `MemoryStrategyVersionStore`: sürümlü strateji parametreleri (`minConfidenceScore`, `minVolumeRatio`, `atrStopMultiplier`, `enabledInSideways`) ve `rollbackToPrevious()` ile tek dokunuşla önceki sürüme geri alma.
+- **30 sinyal aşırı uyum yasağı (Kısıt 9):** strateji başına en az 30 kapanmış sinyal birikmeden hiçbir parametre değişmez; 30'un altında yalnızca gözlem metni ve Wilson %95 güven aralığı üretilir.
+
+**Geri alma:** Uygulama içinden `rollbackToPrevious()` veya `git revert` ile önceki commit'e dönülebilir.
+
 ## pusula_app 0.2.0 — 2026-11-10 (Faz 5)
 
 **Eklendi** (`pusula_app/lib/src/`)

@@ -21,6 +21,7 @@ class PusulaAppState {
     required this.recentNotifications,
     required this.providerHealthList,
     required this.scheduleSnapshot,
+    required this.optimizationProposal,
     required this.isLoading,
     this.statusMessage,
   });
@@ -34,6 +35,7 @@ class PusulaAppState {
   final List<LocalNotificationItem> recentNotifications;
   final List<ProviderHealth> providerHealthList;
   final BackgroundScheduleSnapshot scheduleSnapshot;
+  final StrategyOptimizationProposal optimizationProposal;
   final bool isLoading;
   final String? statusMessage;
 
@@ -108,6 +110,7 @@ class PusulaAppState {
     List<LocalNotificationItem>? recentNotifications,
     List<ProviderHealth>? providerHealthList,
     BackgroundScheduleSnapshot? scheduleSnapshot,
+    StrategyOptimizationProposal? optimizationProposal,
     bool? isLoading,
     String? statusMessage,
   }) =>
@@ -121,6 +124,7 @@ class PusulaAppState {
         recentNotifications: recentNotifications ?? this.recentNotifications,
         providerHealthList: providerHealthList ?? this.providerHealthList,
         scheduleSnapshot: scheduleSnapshot ?? this.scheduleSnapshot,
+        optimizationProposal: optimizationProposal ?? this.optimizationProposal,
         isLoading: isLoading ?? this.isLoading,
         statusMessage: statusMessage,
       );
@@ -159,6 +163,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
   final StorageBundle storage;
   final NotificationCoordinator _notificationCoordinator;
   final BackgroundScheduler _scheduler;
+  final StrategyVersionStore _versionStore = MemoryStrategyVersionStore();
 
   static SignalRecord _makeSeedSignal({
     required String id,
@@ -490,6 +495,31 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       batteryOptimizationIgnored: false,
     );
 
+    final baseVer = StrategyVersionRecord.baseline(createdAt: now);
+    final seedProposal = StrategyOptimizationProposal(
+      currentVersion: baseVer,
+      statsByStrategy: {
+        for (final s in SetupType.values)
+          s: StrategyPerformanceStats(
+            strategy: s,
+            closedCount: s == SetupType.orb || s == SetupType.reclaimMa20 ? 1 : 0,
+            winCount: s == SetupType.orb || s == SetupType.reclaimMa20 ? 1 : 0,
+            winRate: s == SetupType.orb || s == SetupType.reclaimMa20 ? 1.0 : 0.0,
+            avgR: s == SetupType.orb ? 2.0 : (s == SetupType.reclaimMa20 ? 0.5 : 0.0),
+            wilson95Low: s == SetupType.orb || s == SetupType.reclaimMa20 ? 0.207 : 0.0,
+            wilson95High: 1.0,
+            observationNoteTr:
+                '${s.label}: Yetersiz örneklem (${s == SetupType.orb || s == SetupType.reclaimMa20 ? 1 : 0}/30 kapanmış sinyal). '
+                'Aşırı uyum yasağı gereği parametre değiştirilmez; yalnızca gözlem (Wilson %95 GA).',
+          ),
+      },
+      statsByRegime: const {},
+      canModifyParameters: false,
+      proposedVersion: null,
+      summaryReportTr:
+          'Hiçbir strateji henüz 30 kapanmış sinyal eşiğine ulaşmadı. Aşırı uyum (overfitting) yasağı gereği tüm parametreler v2.0.0 sürümünde korundu.',
+    );
+
     return PusulaAppState(
       settings: settings,
       currentReport: initialReport,
@@ -500,6 +530,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       recentNotifications: seedNotifications,
       providerHealthList: providers,
       scheduleSnapshot: schedule,
+      optimizationProposal: seedProposal,
       isLoading: false,
     );
   }
@@ -621,5 +652,12 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       recentNotifications: combined,
       statusMessage: 'Yerel bildirim gönderildi: $body',
     );
+  }
+
+  /// Önceki strateji sürümüne tek dokunuşla geri alır (Faz 6.2).
+  Future<void> rollbackStrategyVersion() async {
+    final prev = await _versionStore.rollbackToPrevious();
+    if (prev == null) return;
+    await _applySettings(state.settings.copyWith(activeStrategyVersion: prev.version));
   }
 }
