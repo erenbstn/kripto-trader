@@ -16,6 +16,7 @@ class ConfidenceBreakdown {
     required this.monteCarloScore,
     required this.rewardRiskScore,
     required this.reasons,
+    this.qualityAdjustment = 0,
   });
 
   /// Kurulum kalitesi ve çoklu kurulum çakışması (0–25).
@@ -36,6 +37,10 @@ class ConfidenceBreakdown {
   /// Ödül/Risk (R:R) oranı katkısı (0–15).
   final int rewardRiskScore;
 
+  /// Kalite düzeltmesi (≤ 0): bayatlamaya yakın veri, işlem maliyeti yükü, aşırı ısınmış RSI veya
+  /// Monte Carlo güven aralığının sıfırı içermesi gibi durumlarda toplamdan düşülen ceza puanı.
+  final int qualityAdjustment;
+
   /// Kullanıcıya gösterilen Türkçe gerekçe maddeleri.
   final List<String> reasons;
 
@@ -46,7 +51,8 @@ class ConfidenceBreakdown {
               regimeAlignment +
               higherTimeframeAlignment +
               monteCarloScore +
-              rewardRiskScore)
+              rewardRiskScore +
+              qualityAdjustment)
           .clamp(0, 100);
 
   Map<String, Object?> toJson() => {
@@ -57,6 +63,7 @@ class ConfidenceBreakdown {
         'higherTimeframeAlignment': higherTimeframeAlignment,
         'monteCarloScore': monteCarloScore,
         'rewardRiskScore': rewardRiskScore,
+        'qualityAdjustment': qualityAdjustment,
         'reasons': reasons,
       };
 
@@ -67,6 +74,7 @@ class ConfidenceBreakdown {
         higherTimeframeAlignment: (j['higherTimeframeAlignment'] as num).toInt(),
         monteCarloScore: (j['monteCarloScore'] as num).toInt(),
         rewardRiskScore: (j['rewardRiskScore'] as num).toInt(),
+        qualityAdjustment: (j['qualityAdjustment'] as num?)?.toInt() ?? 0,
         reasons: [for (final r in (j['reasons'] as List? ?? const [])) '$r'],
       );
 }
@@ -81,6 +89,9 @@ class ConfidenceScorer {
     required MultiTimeframeConfirmation mtf,
     required ExitPlan plan,
     required MonteCarloResult monteCarlo,
+    double? netRewardRisk,
+    double costShareOfRisk = 0.0,
+    double dataAgeBars = 0.0,
   }) {
     final reasons = <String>[];
 
@@ -137,9 +148,35 @@ class ConfidenceScorer {
       'Monte Carlo (Ort. ${monteCarlo.avgR >= 0 ? '+' : ''}${monteCarlo.avgR.toStringAsFixed(2)}R): +$mcPts/15',
     );
 
-    // 6. R:R oranı (0–15)
-    final rrPts = ((plan.rewardRisk - 1.0) * 12.0).round().clamp(0, 15);
-    reasons.add('Ödül/Risk (${plan.rewardRisk.toStringAsFixed(2)}R): +$rrPts/15');
+    // 6. R:R oranı (0–15) — işlem maliyeti biliniyorsa NET oran üzerinden puanlanır
+    final effRr = netRewardRisk ?? plan.rewardRisk;
+    final rrPts = ((effRr - 1.0) * 12.0).round().clamp(0, 15);
+    reasons.add(netRewardRisk == null
+        ? 'Ödül/Risk (${plan.rewardRisk.toStringAsFixed(2)}R): +$rrPts/15'
+        : 'Ödül/Risk (brüt ${plan.rewardRisk.toStringAsFixed(2)}R, maliyet sonrası ${effRr.toStringAsFixed(2)}R): +$rrPts/15');
+
+    // 7. Kalite düzeltmesi (yalnızca ceza; 0 ise gerekçe satırı eklenmez)
+    var penalty = 0;
+    final penaltyNotes = <String>[];
+    if (monteCarlo.avgRConfidenceLow <= 0) {
+      penalty -= 4;
+      penaltyNotes.add('Monte Carlo güven aralığı sıfırı içeriyor');
+    }
+    if (detection.rsi14 >= 76.0) {
+      penalty -= 3;
+      penaltyNotes.add('RSI ${detection.rsi14.toStringAsFixed(0)} aşırı ısınmış');
+    }
+    if (costShareOfRisk >= 0.15) {
+      penalty -= 3;
+      penaltyNotes.add('işlem maliyeti riskin %${(costShareOfRisk * 100).toStringAsFixed(0)} kadarı');
+    }
+    if (dataAgeBars >= 1.5) {
+      penalty -= 3;
+      penaltyNotes.add('sinyal mumu ${dataAgeBars.toStringAsFixed(1)} mum önce kapandı');
+    }
+    if (penalty != 0) {
+      reasons.add('Kalite düzeltmesi (${penaltyNotes.join(', ')}): $penalty');
+    }
 
     return ConfidenceBreakdown(
       setupConfluence: setupPts,
@@ -148,6 +185,7 @@ class ConfidenceScorer {
       higherTimeframeAlignment: mtfPts,
       monteCarloScore: mcPts,
       rewardRiskScore: rrPts,
+      qualityAdjustment: penalty,
       reasons: reasons,
     );
   }

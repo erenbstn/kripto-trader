@@ -4,27 +4,34 @@ import 'package:pusula_core/pusula_core.dart';
 
 import '../state/pusula_controller.dart';
 import '../theme/gunduz_theme.dart';
+import '../update/app_updater.dart';
+import '../widgets/common.dart';
 import '../widgets/donut_3d_chart.dart';
 import '../widgets/recommendation_card.dart';
+import '../widgets/signal_card.dart';
 
-/// Sekme 1 — Özet ekranı (DEVIR.md Faz 5.3).
-/// Haftanın kısa özeti, dokunulup döndürülebilen 3D bütçe halkası, açık sinyaller,
-/// son bildirimler ve görünür "Yatırım tavsiyesi değildir" şeridi.
+/// Sekme 1 — Özet.
+///
+/// Bilgi hiyerarşisi: (1) bu haftanın kararı — yatırım mı nakit mi, (2) bütçe halkası,
+/// (3) son taramanın dürüst dökümü, (4) açık sinyaller, (5) piyasa şeridi, (6) son bildirimler.
 class OzetScreen extends ConsumerWidget {
   const OzetScreen({super.key});
 
-  void _showSliceModal(BuildContext context, DonutSliceData slice, double budgetAmount) {
+  void _showSliceModal(BuildContext context, DonutSliceData slice, PusulaAppState state) {
+    final budget = state.settings.budgetAmount;
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      constraints: const BoxConstraints(maxWidth: 640),
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (ctx) {
+        final p = PusulaPalette.of(ctx);
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -39,6 +46,7 @@ class OzetScreen extends ConsumerWidget {
                         ),
                       ),
                       IconButton(
+                        tooltip: 'Kapat',
                         icon: const Icon(Icons.close),
                         onPressed: () => Navigator.of(ctx).pop(),
                       ),
@@ -50,7 +58,9 @@ class OzetScreen extends ConsumerWidget {
                   if (slice.recommendation != null)
                     RecommendationDetailCard(
                       recommendation: slice.recommendation!,
-                      budgetAmount: budgetAmount,
+                      budgetAmount: budget,
+                      currentPrice: state.priceOf(slice.recommendation!.instrument),
+                      initiallyExpanded: true,
                     )
                   else
                     Card(
@@ -59,16 +69,19 @@ class OzetScreen extends ConsumerWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              '${slice.label} (%${slice.weightPct.toStringAsFixed(1).replaceAll('.', ',')})',
-                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                            StatTile(
+                              label: slice.label,
+                              value: Fmt.pct(slice.weightPct),
+                              hint: '≈ ${Fmt.tl(budget * slice.weightPct / 100.0)}',
+                              big: true,
                             ),
-                            const SizedBox(height: 6),
-                            Text(slice.subtitle),
                             const SizedBox(height: 8),
+                            Text(slice.subtitle, style: TextStyle(fontSize: 13, color: p.textDim, height: 1.35)),
+                            const SizedBox(height: 6),
                             Text(
-                              'Tutar karşılığı: ≈ ${(budgetAmount * slice.weightPct / 100.0).toStringAsFixed(0)} TL',
-                              style: const TextStyle(fontWeight: FontWeight.w700),
+                              'Nakit bir bekleme odası değil, bir pozisyondur: eşiği geçen fırsat olmadığında '
+                              'sermayeyi korur ve bir sonraki kurulum için hazır tutar.',
+                              style: TextStyle(fontSize: 12.5, color: p.textDim, height: 1.35),
                             ),
                           ],
                         ),
@@ -87,79 +100,29 @@ class OzetScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(pusulaControllerProvider);
     final controller = ref.read(pusulaControllerProvider.notifier);
-    final alloc = state.currentReport.newAllocation;
+    final p = PusulaPalette.of(context);
     final disableAnim = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
     final flat2D = state.settings.shouldSimplifyAnimations || disableAnim;
+    final shortTerm = state.activeShortTermSignals;
+    final openSignals = state.isDemo ? state.activeSignals : shortTerm;
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-      children: [
+    return PageBody(
+      primary: [
         const DisclaimerBanner(),
-        const SizedBox(height: 14),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        'Haftalık Portföy Pusulası',
-                        style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: GunduzColors.accent.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Text(
-                        'Risk: ${alloc.appetite.label}',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: GunduzColors.accent,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  alloc.summaryMessage,
-                  style: const TextStyle(fontSize: 13),
-                ),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _PillBadge(
-                      label: 'BIST Toplam: %${alloc.bistTotalWeightPct.toStringAsFixed(1).replaceAll('.', ',')}',
-                      color: GunduzColors.accent,
-                    ),
-                    _PillBadge(
-                      label: 'Kripto Toplam: %${alloc.cryptoTotalWeightPct.toStringAsFixed(1).replaceAll('.', ',')}',
-                      color: GunduzColors.coral,
-                    ),
-                    _PillBadge(
-                      label: 'Açık Risk: %${alloc.totalOpenRiskPct.toStringAsFixed(2).replaceAll('.', ',')}',
-                      color: GunduzColors.profitGreen,
-                    ),
-                    _PillBadge(
-                      label: 'Nakit: %${alloc.cashWeightPct.toStringAsFixed(1).replaceAll('.', ',')}',
-                      color: GunduzColors.neutralSlate,
-                    ),
-                  ],
-                ),
-              ],
-            ),
+        if (state.updateState.status == UpdateStatus.available ||
+            state.updateState.status == UpdateStatus.downloading ||
+            state.updateState.status == UpdateStatus.permissionRequired ||
+            state.updateState.status == UpdateStatus.readyToInstall) ...[
+          const Gap(8),
+          _UpdateBanner(
+            updateState: state.updateState,
+            onDownload: controller.downloadAndInstallUpdate,
           ),
-        ),
-        const SizedBox(height: 14),
+        ],
+        if (state.isDemo) ...[const Gap(8), const _DemoBanner()],
+        const Gap(12),
+        _DecisionCard(state: state),
+        const Gap(12),
         Card(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -167,248 +130,534 @@ class OzetScreen extends ConsumerWidget {
               slices: state.donutSlices,
               flat2D: flat2D,
               budgetAmount: state.settings.budgetAmount,
-              onSliceTap: (slice) => _showSliceModal(context, slice, state.settings.budgetAmount),
+              onSliceTap: (slice) => _showSliceModal(context, slice, state),
             ),
           ),
         ),
-        const SizedBox(height: 18),
-        Text(
-          'Açık Sinyaller (${state.activeSignals.length})',
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        if (!state.isDemo) ...[
+          const Gap(12),
+          _ScanSummaryCard(state: state, onScan: () => controller.refreshLiveMarketData(forceRefresh: true)),
+        ],
+      ],
+      secondary: [
+        SectionTitle(
+          state.isDemo ? 'Açık sinyaller (${openSignals.length})' : 'Kısa vade açık sinyaller (${openSignals.length})',
+          subtitle: state.isDemo ? null : 'Haftalık öneriler bütçe halkasında ve Öneri sekmesinde.',
         ),
-        const SizedBox(height: 8),
-        for (final sig in state.activeSignals) ...[
+        if (openSignals.isEmpty)
+          EmptyNote(
+            icon: Icons.radar,
+            title: 'Açık kısa vade sinyali yok',
+            body: state.lastScan == null
+                ? 'İlk tarama tamamlandığında, onaylanan kurulumlar burada görünür.'
+                : 'Son taramada eşiği geçen kısa vade kurulumu çıkmadı. Pusula zorla sinyal üretmez.',
+          )
+        else
+          for (final sig in openSignals) ...[
+            SignalCard(signal: sig, currentPrice: state.priceOf(sig.instrument), compact: true),
+            const Gap(10),
+          ],
+        const SectionTitle('Piyasa', subtitle: 'Kripto 24 saatlik, BIST günlük değişim. BIST verisi ~15 dk gecikmelidir.'),
+        if (state.cryptoQuotes.isEmpty && state.bistQuotes.isEmpty)
+          const EmptyNote(
+            icon: Icons.show_chart,
+            title: 'Fiyat verisi henüz yok',
+            body: 'Tarama tamamlandığında 10 kripto varlığı ve BIST izleme listesi burada listelenir.',
+          )
+        else
           Card(
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: (sig.instrument.market == Market.bist
-                                  ? GunduzColors.accent
-                                  : GunduzColors.coral)
-                              .withValues(alpha: 0.14),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          sig.instrument.market == Market.bist ? 'BIST' : 'KRİPTO',
-                          style: TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                            color: sig.instrument.market == Market.bist
-                                ? GunduzColors.accent
-                                : GunduzColors.coral,
+                  if (state.cryptoQuotes.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        Tag('KRİPTO', color: p.coral),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Binance · anlık',
+                            style: TextStyle(fontSize: 11.5, color: p.textDim),
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          '${sig.instrument.symbol} · ${sig.strategy.label}',
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                      ],
+                    ),
+                    const Gap(10),
+                    _QuoteGrid(quotes: state.cryptoQuotes),
+                  ],
+                  if (state.cryptoQuotes.isNotEmpty && state.bistQuotes.isNotEmpty)
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 14), child: Divider()),
+                  if (state.bistQuotes.isNotEmpty) ...[
+                    Row(
+                      children: [
+                        Tag('BIST', color: p.accent),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Yahoo Finance / İş Yatırım · ~15 dk gecikmeli',
+                            style: TextStyle(fontSize: 11.5, color: p.textDim),
+                          ),
                         ),
-                      ),
-                      Text(
-                        'Güven ${sig.confidence.total}/100',
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Giriş Bölgesi: ${sig.entryZoneLow.toStringAsFixed(2).replaceAll('.', ',')} – ${sig.entryZoneHigh.toStringAsFixed(2).replaceAll('.', ',')} · Stop: ${sig.currentStop.toStringAsFixed(2).replaceAll('.', ',')} · Hedef 2R: ${sig.target2.toStringAsFixed(2).replaceAll('.', ',')}',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 6),
-                  DataProvenanceBadge(
-                    sourceLabel: sig.dataSource,
-                    ageMinutes: (sig.dataAgeMs / 60000).round(),
-                    isStale: sig.dataStale,
-                  ),
+                      ],
+                    ),
+                    const Gap(10),
+                    _QuoteGrid(quotes: state.bistQuotes),
+                  ],
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 10),
-        ],
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Canlı Piyasa Fiyatları (Kripto & BIST)',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-              ),
-            ),
-            TextButton.icon(
-              onPressed: state.isLoading ? null : () => controller.refreshLiveMarketData(),
-              icon: const Icon(Icons.sync, size: 16),
-              label: Text(state.isLoading ? 'Yenileniyor...' : 'Canlı Yenile'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
+        const SectionTitle('Son bildirimler'),
+        if (state.recentNotifications.isEmpty)
+          const EmptyNote(
+            icon: Icons.notifications_none,
+            title: 'Henüz bildirim yok',
+            body: 'Yeni kurulum, hedef ve stop olayları yalnızca bu cihazda yerel bildirim olarak gösterilir.',
+          )
+        else
+          Card(
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Kripto Evreni (Binance Spot / Futures · Anlık)',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: GunduzColors.coral),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final q in state.cryptoQuotes) _LiveQuoteChip(quote: q),
-                  ],
-                ),
-                const Divider(height: 22),
-                const Text(
-                  'Borsa İstanbul İzleme (Yahoo Finance / İş Yatırım · ~15 dk Gecikmeli)',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: GunduzColors.accent),
-                ),
-                const SizedBox(height: 8),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final q in state.bistQuotes) _LiveQuoteChip(quote: q),
-                  ],
-                ),
+                for (final (i, notif) in state.recentNotifications.take(5).indexed) ...[
+                  if (i > 0) const Divider(indent: 52),
+                  ListTile(
+                    dense: true,
+                    leading: Icon(
+                      switch (notif.channel.id) {
+                        'pusula_signal' => Icons.bolt_outlined,
+                        'pusula_outcome' => Icons.flag_outlined,
+                        'pusula_report' => Icons.article_outlined,
+                        _ => Icons.info_outline,
+                      },
+                      color: notif.channel.highPriority ? p.coral : p.accent,
+                    ),
+                    title: Text(notif.title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                    subtitle: Text(notif.body, style: const TextStyle(fontSize: 12)),
+                  ),
+                ],
               ],
             ),
           ),
-        ),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            const Expanded(
-              child: Text(
-                'Son Yerel Bildirimler',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-              ),
-            ),
-            TextButton.icon(
-              onPressed: () => controller.triggerSampleNotification(),
-              icon: const Icon(Icons.notifications_active_outlined, size: 16),
-              label: const Text('Örnek Bildirim'),
-            ),
-          ],
-        ),
-        const SizedBox(height: 6),
-        for (final notif in state.recentNotifications.take(5)) ...[
-          Card(
-            child: ListTile(
-              dense: true,
-              leading: Icon(
-                Icons.notifications_none,
-                color: notif.channel.highPriority ? GunduzColors.coral : GunduzColors.accent,
-              ),
-              title: Text(
-                notif.title,
-                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
-              ),
-              subtitle: Text(
-                notif.body,
-                style: const TextStyle(fontSize: 12),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-        ],
       ],
     );
   }
 }
 
-class _PillBadge extends StatelessWidget {
-  const _PillBadge({required this.label, required this.color});
+/// Yeni APK sürümü hazır olduğunda Özet ekranının üstünde gösterilen güncelleme çubuğu.
+class _UpdateBanner extends StatelessWidget {
+  const _UpdateBanner({required this.updateState, required this.onDownload});
 
-  final String label;
-  final Color color;
+  final AppUpdateState updateState;
+  final VoidCallback onDownload;
 
   @override
   Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    final rel = updateState.availableRelease;
+    final downloading = updateState.status == UpdateStatus.downloading;
+    final permNeeded = updateState.status == UpdateStatus.permissionRequired;
+    final title = rel != null
+        ? 'Pusula ${rel.version.label} güncellemesi hazır${rel.sizeLabel.isNotEmpty ? ' (${rel.sizeLabel})' : ''}'
+        : 'Yeni uygulama güncellemesi hazır';
+
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      key: const Key('banner_app_update'),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.11),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
+        color: p.accentSoft,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.accent.withValues(alpha: 0.45)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w700,
-          color: color,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.system_update_outlined, size: 18, color: p.accent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: p.accent),
+                ),
+              ),
+              if (!downloading)
+                FilledButton(
+                  key: const Key('btn_banner_update_now'),
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size(0, 34),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  ),
+                  onPressed: onDownload,
+                  child: Text(permNeeded ? 'Tekrar Dene' : 'Güncelle'),
+                ),
+            ],
+          ),
+          if (updateState.message != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              updateState.message!,
+              style: TextStyle(fontSize: 12, color: p.text, height: 1.3),
+            ),
+          ],
+          if (downloading) ...[
+            const SizedBox(height: 8),
+            MeterBar(fraction: updateState.downloadProgress ?? 0.0, color: p.accent),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Örnek veri kipinde görünür uyarı: ekrandaki sinyaller gerçek değildir.
+class _DemoBanner extends StatelessWidget {
+  const _DemoBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: p.coral.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: p.coral.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.science_outlined, size: 16, color: p.coral),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'ÖRNEK VERİ · Ağsız önizleme kipi. Bu ekrandaki sinyal ve fiyatlar gerçek değildir.',
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: p.coral, height: 1.3),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Ekranın en önemli öğesi: bu haftanın kararı. Fırsat yoksa bunu büyük harflerle ve dürüstçe söyler.
+class _DecisionCard extends StatelessWidget {
+  const _DecisionCard({required this.state});
+
+  final PusulaAppState state;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    final alloc = state.currentReport.newAllocation;
+    final has = alloc.hasRecommendations;
+    final scan = state.lastScan;
+    final riskFraction = alloc.appetite.maxTotalRiskPct <= 0 ? 0.0 : alloc.totalOpenRiskPct / alloc.appetite.maxTotalRiskPct;
+
+    final String headline;
+    final String detail;
+    if (has) {
+      headline = '${alloc.recommendations.length} öneri · ${Fmt.pct(alloc.investedWeightPct, decimals: 0)} yatırım';
+      detail = '${alloc.bistRecommendations.length} BIST, ${alloc.cryptoRecommendations.length} kripto. '
+          'Kalan ${Fmt.pct(alloc.cashWeightPct, decimals: 0)} nakitte bekliyor.';
+    } else if (scan == null && !state.isDemo) {
+      headline = 'Şimdilik nakitte';
+      detail = 'Henüz tarama yapılmadı. İlk tarama bitene kadar hiçbir öneri gösterilmez.';
+    } else if (scan != null && scan.noData) {
+      headline = 'Veri alınamadı';
+      detail = 'Piyasa verisine ulaşılamadığı için değerlendirme yapılamadı. Bu bir "fırsat yok" sonucu değildir.';
+    } else {
+      headline = 'Bu hafta nakitte kal';
+      detail = 'Eşiği geçen haftalık fırsat yok. Sermayeyi korumak da bir karardır.';
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'BU HAFTANIN KARARI',
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, letterSpacing: 0.8, color: p.textDim),
+                  ),
+                ),
+                Tag('Risk: ${alloc.appetite.label}', color: p.accent),
+              ],
+            ),
+            const Gap(8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: (has ? p.accent : p.neutral).withValues(alpha: 0.14),
+                    borderRadius: BorderRadius.circular(13),
+                  ),
+                  child: Icon(
+                    has ? Icons.explore : Icons.savings_outlined,
+                    color: has ? p.accent : p.neutral,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    headline,
+                    style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w800, letterSpacing: -0.5, height: 1.15),
+                  ),
+                ),
+              ],
+            ),
+            const Gap(8),
+            Text(detail, style: TextStyle(fontSize: 13, color: p.textDim, height: 1.4)),
+            const Gap(14),
+            Row(
+              children: [
+                Expanded(
+                  child: StatTile(label: 'Nakit', value: Fmt.pct(alloc.cashWeightPct, decimals: 0), big: true),
+                ),
+                Expanded(
+                  child: StatTile(
+                    label: 'BIST',
+                    value: Fmt.pct(alloc.bistTotalWeightPct, decimals: 0),
+                    valueColor: p.accent,
+                    big: true,
+                  ),
+                ),
+                Expanded(
+                  child: StatTile(
+                    label: 'Kripto',
+                    value: Fmt.pct(alloc.cryptoTotalWeightPct, decimals: 0),
+                    valueColor: p.coral,
+                    big: true,
+                  ),
+                ),
+              ],
+            ),
+            const Gap(14),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Açık risk ${Fmt.pct(alloc.totalOpenRiskPct, decimals: 2)} / sınır ${Fmt.pct(alloc.appetite.maxTotalRiskPct)}',
+                    style: TextStyle(fontSize: 12, color: p.textDim, fontWeight: FontWeight.w600),
+                  ),
+                ),
+              ],
+            ),
+            const Gap(6),
+            MeterBar(fraction: riskFraction, color: riskFraction > 0.85 ? p.coral : p.profit),
+            if (state.regimes.isNotEmpty) ...[
+              const Gap(12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                children: [
+                  if (state.regimes[Market.crypto] != null)
+                    RegimeChip(marketLabel: 'Kripto', regime: state.regimes[Market.crypto]!.regime),
+                  if (state.regimes[Market.bist] != null)
+                    RegimeChip(marketLabel: 'BIST', regime: state.regimes[Market.bist]!.regime),
+                ],
+              ),
+            ],
+            if (alloc.scalingNotes.isNotEmpty) ...[
+              const Gap(10),
+              for (final n in alloc.scalingNotes)
+                Text('• $n', style: TextStyle(fontSize: 11.5, color: p.textDim, height: 1.35)),
+            ],
+          ],
         ),
       ),
     );
   }
 }
 
-class _LiveQuoteChip extends StatelessWidget {
-  const _LiveQuoteChip({required this.quote});
+/// Son taramanın hunisi: kaç varlık tarandı, kaçında kurulum bulundu, kaçı onaylandı ve
+/// elenenler hangi aşamada elendi. "Neden öneri yok?" sorusunun cevabı buradadır.
+class _ScanSummaryCard extends StatelessWidget {
+  const _ScanSummaryCard({required this.state, required this.onScan});
 
-  final LiveMarketQuote quote;
-
-  static String _formatPrice(double p, Market m) {
-    if (m == Market.bist) {
-      return '${p.toStringAsFixed(2).replaceAll('.', ',')} TL';
-    }
-    if (p >= 1000) return '${p.toStringAsFixed(2).replaceAll('.', ',')} \$';
-    if (p >= 1) return '${p.toStringAsFixed(3).replaceAll('.', ',')} \$';
-    return '${p.toStringAsFixed(4).replaceAll('.', ',')} \$';
-  }
+  final PusulaAppState state;
+  final VoidCallback onScan;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final chg = quote.changePct;
-    final chgColor = chg > 0.001
-        ? GunduzColors.profitGreen
-        : (chg < -0.001 ? GunduzColors.lossRed : GunduzColors.neutralSlate);
-    final sign = chg > 0.001 ? '+' : '';
+    final p = PusulaPalette.of(context);
+    final scan = state.lastScan;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: isDark ? GunduzColors.darkSubtleSurface : GunduzColors.subtleSurface,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(
-          color: isDark ? GunduzColors.darkBorder : GunduzColors.border,
+    if (scan == null) {
+      return EmptyNote(
+        icon: Icons.travel_explore,
+        title: state.isLoading ? 'Piyasa taranıyor…' : 'Tarama bekleniyor',
+        body: state.isLoading
+            ? '10 kripto varlığı ve BIST izleme listesi kapanmış mumlarla değerlendiriliyor.'
+            : 'Tarama; veri tazeliği, kurulum kalitesi, işlem maliyeti, Monte Carlo ve güven eşiği süzgeçlerinden geçer.',
+        action: state.isLoading
+            ? null
+            : FilledButton.icon(
+                onPressed: onScan,
+                icon: const Icon(Icons.radar, size: 18),
+                label: const Text('Şimdi tara'),
+              ),
+      );
+    }
+
+    final rejections = scan.rejectionsByStage.entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+
+    Widget step(String label, int value, Color color) => Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '$value',
+                style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: color, letterSpacing: -0.5),
+              ),
+              Text(label, style: TextStyle(fontSize: 11.5, color: p.textDim, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            CardHeader(
+              icon: Icons.filter_alt_outlined,
+              title: 'Son tarama',
+              trailing: Text(
+                Fmt.dateTimeTrt(scan.finishedAt),
+                style: TextStyle(fontSize: 11.5, color: p.textDim),
+              ),
+            ),
+            const Gap(14),
+            Row(
+              children: [
+                step('varlık tarandı', scan.scannedInstrumentCount, p.text),
+                Icon(Icons.chevron_right, color: p.border),
+                const SizedBox(width: 8),
+                step('kurulum bulundu', scan.setupCount, p.accent),
+                Icon(Icons.chevron_right, color: p.border),
+                const SizedBox(width: 8),
+                step('onaylandı', scan.approvedCount, scan.approvedCount > 0 ? p.profit : p.neutral),
+              ],
+            ),
+            if (rejections.isNotEmpty) ...[
+              const Gap(14),
+              Text('Elenme nedenleri', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: p.textDim)),
+              const Gap(6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final e in rejections)
+                    Tag(
+                      '${FunnelStage.label(e.key)} · ${e.value}',
+                      color: e.key == FunnelStage.fetch || e.key == FunnelStage.data ? p.coral : p.neutral,
+                    ),
+                ],
+              ),
+            ],
+            if (scan.fetchFailures.isNotEmpty) ...[
+              const Gap(10),
+              Text(
+                'Veri alınamayan: ${scan.fetchFailures.keys.map((i) => i.short).take(8).join(', ')}'
+                '${scan.fetchFailures.length > 8 ? '…' : ''}',
+                style: TextStyle(fontSize: 12, color: p.coral, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ],
         ),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+    );
+  }
+}
+
+/// Fiyat kutucukları: genişliğe göre 2–4 sütun; iç içe kaydırma kullanmaz.
+class _QuoteGrid extends StatelessWidget {
+  const _QuoteGrid({required this.quotes});
+
+  final List<LiveMarketQuote> quotes;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        final cols = (c.maxWidth / 132).floor().clamp(2, 5);
+        final w = (c.maxWidth - (cols - 1) * 8) / cols;
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final q in quotes) SizedBox(width: w, child: _QuoteTile(quote: q)),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _QuoteTile extends StatelessWidget {
+  const _QuoteTile({required this.quote});
+
+  final LiveMarketQuote quote;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    final chg = quote.changePct;
+    final up = chg > 0.005;
+    final down = chg < -0.005;
+    final color = up ? p.profit : (down ? p.loss : p.neutral);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: p.subtle,
+        borderRadius: BorderRadius.circular(10),
+        border: quote.isStale ? Border.all(color: p.coral.withValues(alpha: 0.6)) : null,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            quote.instrument.short,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  quote.instrument.short,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+                ),
+              ),
+              if (quote.isStale) Icon(Icons.warning_amber_rounded, size: 13, color: p.coral),
+            ],
           ),
-          const SizedBox(width: 6),
+          const SizedBox(height: 2),
           Text(
-            _formatPrice(quote.lastPrice, quote.instrument.market),
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-          ),
-          const SizedBox(width: 5),
-          Text(
-            '$sign%${chg.toStringAsFixed(2).replaceAll('.', ',')}',
-            style: TextStyle(
-              fontSize: 11,
+            Fmt.price(quote.lastPrice, quote.instrument.market),
+            style: const TextStyle(
+              fontSize: 13,
               fontWeight: FontWeight.w700,
-              color: chgColor,
+              fontFeatures: [FontFeature.tabularFigures()],
             ),
+          ),
+          Row(
+            children: [
+              Icon(up ? Icons.arrow_drop_up : (down ? Icons.arrow_drop_down : Icons.remove), size: 16, color: color),
+              Text(
+                Fmt.pct(chg, decimals: 2, signed: true),
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: color),
+              ),
+            ],
           ),
         ],
       ),

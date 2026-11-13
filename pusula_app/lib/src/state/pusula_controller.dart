@@ -10,63 +10,12 @@ import '../notifications/notification_engine.dart';
 import '../storage/app_settings.dart';
 import '../storage/sqlite_storage.dart';
 import '../theme/gunduz_theme.dart';
+import '../update/app_updater.dart';
 import '../widgets/donut_3d_chart.dart';
+import 'live_data.dart';
+import 'scan_runner.dart';
 
-/// Tek bir varlığın canlı piyasa fiyat özeti (Özet ve Sinyal ekranlarında gösterilir).
-class LiveMarketQuote {
-  const LiveMarketQuote({
-    required this.instrument,
-    required this.lastPrice,
-    required this.changePct,
-    required this.sourceLabel,
-    required this.ageMinutes,
-    required this.isStale,
-  });
-
-  final Instrument instrument;
-  final double lastPrice;
-  final double changePct;
-  final String sourceLabel;
-  final int ageMinutes;
-  final bool isStale;
-}
-
-/// Web (Chrome) ve Android uyumlu HTTP istemcisi.
-/// Android'de doğrudan hedefe bağlanır; Web (Chrome) üzerinde Yahoo Finance ve İş Yatırım
-/// CORS kısıtlamasına takılmamak için önce yerel PC köprüsünü (127.0.0.1:8787) dener.
-class PusulaHttpFetcher implements HttpFetcher {
-  PusulaHttpFetcher({NetworkHttpFetcher? delegate})
-      : _delegate = delegate ?? NetworkHttpFetcher(sendUserAgent: !kIsWeb);
-
-  final NetworkHttpFetcher _delegate;
-
-  static const Set<String> _corsRestrictedWebHosts = {
-    'query1.finance.yahoo.com',
-    'query2.finance.yahoo.com',
-    'www.isyatirim.com.tr',
-  };
-
-  @override
-  Future<String> getText(
-    Uri uri, {
-    Map<String, String>? headers,
-    Duration timeout = const Duration(seconds: 12),
-  }) async {
-    if (kIsWeb && _corsRestrictedWebHosts.contains(uri.host)) {
-      final proxyUri = Uri.parse(
-        'http://127.0.0.1:8787/proxy?url=${Uri.encodeComponent(uri.toString())}',
-      );
-      try {
-        return await _delegate.getText(proxyUri, headers: headers, timeout: timeout);
-      } catch (_) {
-        // Yerel köprü çalışmıyorsa doğrudan isteği dene.
-      }
-    }
-    return _delegate.getText(uri, headers: headers, timeout: timeout);
-  }
-
-  void close() => _delegate.close();
-}
+export 'live_data.dart';
 
 /// Uygulamanın tüm ekranlarını besleyen birleşik durum nesnesi.
 class PusulaAppState {
@@ -86,6 +35,10 @@ class PusulaAppState {
     required this.isLoading,
     this.lastRefreshedAt,
     this.statusMessage,
+    this.isDemo = false,
+    this.lastScan,
+    this.scanProgress,
+    this.updateState = const AppUpdateState.idle(),
   });
 
   final AppSettings settings;
@@ -103,6 +56,38 @@ class PusulaAppState {
   final bool isLoading;
   final DateTime? lastRefreshedAt;
   final String? statusMessage;
+
+  /// Ağsız önizleme/test kipi: ekrandaki sinyaller ÖRNEK veridir ve öyle etiketlenir.
+  /// Gerçek uygulamada her zaman false olur; hiçbir örnek sinyal gösterilmez.
+  final bool isDemo;
+
+  /// Son tarama turunun özeti (kaç varlık tarandı, kaç aday neden elendi).
+  final ScanOutcome? lastScan;
+
+  /// Devam eden taramanın ilerlemesi (0–1); tarama yokken null.
+  final double? scanProgress;
+
+  /// GitHub Releases üzerinden uygulama içi APK güncelleme durumu.
+  final AppUpdateState updateState;
+
+  /// Piyasa rejimleri (son taramadan).
+  Map<Market, RegimeReport> get regimes => lastScan?.regimes ?? const {};
+
+  /// Haftalık öneri niteliğindeki açık sinyaller (bütçe ağırlığı alanlar).
+  List<SignalRecord> get activeWeeklySignals =>
+      [for (final s in activeSignals) if (isDemo || s.isWeeklyProposal) s];
+
+  /// Varlığın bilinen son fiyatı (piyasa şeridinden); yoksa null.
+  double? priceOf(Instrument ins) {
+    for (final q in ins.market == Market.bist ? bistQuotes : cryptoQuotes) {
+      if (q.instrument == ins) return q.lastPrice;
+    }
+    return null;
+  }
+
+  /// Kısa vade niteliğindeki açık sinyaller.
+  List<SignalRecord> get activeShortTermSignals =>
+      [for (final s in activeSignals) if (!s.isWeeklyProposal) s];
 
   /// 3D / 2D halka grafik için bütçe dilimlerini üretir.
   List<DonutSliceData> get donutSlices {
@@ -181,6 +166,9 @@ class PusulaAppState {
     bool? isLoading,
     DateTime? lastRefreshedAt,
     String? statusMessage,
+    ScanOutcome? lastScan,
+    double? scanProgress,
+    AppUpdateState? updateState,
   }) =>
       PusulaAppState(
         settings: settings ?? this.settings,
@@ -198,6 +186,10 @@ class PusulaAppState {
         isLoading: isLoading ?? this.isLoading,
         lastRefreshedAt: lastRefreshedAt ?? this.lastRefreshedAt,
         statusMessage: statusMessage,
+        isDemo: isDemo,
+        lastScan: lastScan ?? this.lastScan,
+        scanProgress: scanProgress,
+        updateState: updateState ?? this.updateState,
       );
 }
 
@@ -215,14 +207,34 @@ final liveNetworkEnabledProvider = Provider<bool>((ref) {
   return false;
 });
 
+/// Örnek (demo) veriyle başlatma. Ağsız widget testleri ve tasarım önizlemesi için varsayılan true;
+/// gerçek uygulama (`main.dart`) bunu false yapar: örnek sinyal asla gerçek öneri gibi gösterilmez.
+final demoSeedProvider = Provider<bool>((ref) {
+  return true;
+});
+
+/// Testte sahte veri servisi enjekte etmek için (varsayılan: gerçek ağ sağlayıcıları).
+final dataServiceFactoryProvider = Provider<MarketDataService Function()?>((ref) {
+  return null;
+});
+
+/// Testte veya yerelde uygulama güncelleyici servisi enjekte etmek için.
+final appUpdateServiceProvider = Provider<AppUpdateService?>((ref) {
+  return null;
+});
+
 final pusulaControllerProvider = StateNotifierProvider<PusulaController, PusulaAppState>((ref) {
   final storage = ref.watch(storageBundleProvider);
   final gateway = ref.watch(notificationGatewayProvider);
   final enableLive = ref.watch(liveNetworkEnabledProvider);
+  final demo = ref.watch(demoSeedProvider);
   return PusulaController(
     storage: storage,
     notificationGateway: gateway,
     enableLiveNetwork: enableLive,
+    demoSeed: demo,
+    dataServiceFactory: ref.watch(dataServiceFactoryProvider),
+    updateService: ref.watch(appUpdateServiceProvider),
   );
 });
 
@@ -231,8 +243,13 @@ class PusulaController extends StateNotifier<PusulaAppState> {
     required this.storage,
     required LocalNotificationGateway notificationGateway,
     this.enableLiveNetwork = false,
+    this.demoSeed = true,
+    this.dataServiceFactory,
+    AppUpdateService? updateService,
     Clock? clock,
   })  : _clock = clock ?? (() => DateTime.now().toUtc()),
+        _updater = updateService ?? AppUpdateService(),
+        _ownsUpdater = updateService == null,
         _notificationCoordinator = NotificationCoordinator(
           gateway: notificationGateway,
           clock: clock ?? (() => DateTime.now().toUtc()),
@@ -240,53 +257,112 @@ class PusulaController extends StateNotifier<PusulaAppState> {
         _scheduler = BackgroundScheduler(
           clock: clock ?? (() => DateTime.now().toUtc()),
         ),
-        super(_buildInitialSeedState(clock ?? (() => DateTime.now().toUtc()))) {
-    _init();
+        super(demoSeed
+            ? _buildInitialSeedState(clock ?? (() => DateTime.now().toUtc()))
+            : _buildInitialLiveState(clock ?? (() => DateTime.now().toUtc()))) {
+    ready = _init();
   }
 
   final StorageBundle storage;
   final bool enableLiveNetwork;
+
+  /// true ise ağsız örnek veriyle başlar (test/önizleme); false ise yalnızca gerçek tarama sonuçları gösterilir.
+  final bool demoSeed;
+  final MarketDataService Function()? dataServiceFactory;
+  final AppUpdateService _updater;
+  final bool _ownsUpdater;
   final Clock _clock;
   final NotificationCoordinator _notificationCoordinator;
   final BackgroundScheduler _scheduler;
   final StrategyVersionStore _versionStore = MemoryStrategyVersionStore();
 
-  /// Eski hatalı tohum (seed) kimlikleri; SQLite'ta bunlardan biri varsa temizlenir.
-  static const Set<String> _legacyStaleSeedIds = {
-    'sig_thyao_w1',
-    'sig_asels_w1',
-    'sig_sol_w1',
-    'sig_btc_w1',
-    'sig_link_closed',
-    'sig_akbnk_closed',
-  };
+  /// Başlangıç yüklemesi (ve varsa ilk canlı tarama) tamamlandığında biten gelecek; testler bunu bekler.
+  late final Future<void> ready;
 
   /// Canlı izlenen başlıca BIST hisseleri ve endeks.
-  static const List<Instrument> watchedBistInstruments = [
-    BistUniverse.benchmark,
-    Instrument.bist('THYAO', name: 'Türk Hava Yolları'),
-    Instrument.bist('ASELS', name: 'Aselsan'),
-    Instrument.bist('AKBNK', name: 'Akbank'),
-    Instrument.bist('GARAN', name: 'Garanti BBVA'),
-    Instrument.bist('TUPRS', name: 'Tüpraş'),
-    Instrument.bist('BIMAS', name: 'BİM Mağazaları'),
-    Instrument.bist('KCHOL', name: 'Koç Holding'),
-    Instrument.bist('ISCTR', name: 'İş Bankası (C)'),
-    Instrument.bist('SAHOL', name: 'Sabancı Holding'),
-    Instrument.bist('EREGL', name: 'Erdemir'),
-    Instrument.bist('SISE', name: 'Şişecam'),
-    Instrument.bist('TCELL', name: 'Turkcell'),
-    Instrument.bist('PGSUS', name: 'Pegasus'),
-    Instrument.bist('ASTOR', name: 'Astor Enerji'),
-    Instrument.bist('FROTO', name: 'Ford Otosan'),
-    Instrument.bist('EKGYO', name: 'Emlak Konut GYO'),
-  ];
+  static const List<Instrument> watchedBistInstruments = [BistUniverse.benchmark, ...kWatchedBistStocks];
 
   Future<void> _init() async {
     await _hydrateFromStorage();
-    if (enableLiveNetwork && mounted) {
+    final installed = await _updater.installedVersion();
+    if (mounted) {
+      state = state.copyWith(
+        updateState: state.updateState.copyWith(currentVersion: installed),
+        statusMessage: state.statusMessage,
+        scanProgress: state.scanProgress,
+      );
+    }
+    if (enableLiveNetwork && !demoSeed && mounted) {
+      if (!kIsWeb && state.settings.autoCheckUpdates && state.settings.updateRepo.isNotEmpty) {
+        unawaited(checkForAppUpdate(silent: true));
+      }
       await refreshLiveMarketData();
     }
+  }
+
+  @override
+  void dispose() {
+    if (_ownsUpdater) _updater.dispose();
+    super.dispose();
+  }
+
+  static StrategyOptimizationProposal _emptyProposal(DateTime now) => StrategyOptimizationProposal(
+        currentVersion: StrategyVersionRecord.baseline(createdAt: now),
+        statsByStrategy: const {},
+        statsByRegime: const {},
+        canModifyParameters: false,
+        proposedVersion: null,
+        summaryReportTr:
+            'Henüz kapanmış sinyal yok. Aşırı uyum (overfitting) yasağı gereği strateji başına '
+            '$kMinClosedSignalsForTuning kapanmış sinyal birikmeden hiçbir parametre değiştirilmez.',
+      );
+
+  /// Gerçek uygulamanın başlangıç durumu: hiçbir örnek sinyal, fiyat veya bildirim içermez.
+  /// İlk tarama bitene kadar dürüstçe "%100 nakit · tarama bekleniyor" gösterilir.
+  static PusulaAppState _buildInitialLiveState(Clock clock) {
+    final now = clock().toUtc();
+    const settings = AppSettings();
+    final allocation = const PortfolioWeightAllocator().allocate(
+      const [],
+      appetite: settings.riskAppetite,
+      totalBudget: settings.budgetAmount,
+    );
+    final weekStart = ScanRunner.weekStartUtc(now);
+    final report = WeeklyReport(
+      id: ScanRunner.reportIdFor(weekStart),
+      weekStart: weekStart,
+      weekEnd: now,
+      generatedAt: now,
+      lastWeekReview: const LastWeekReview.empty(),
+      shortTermReport: const ShortTermWeeklyReport(
+        crypto: ShortTermMarketSummary.empty(Market.crypto),
+        bist: ShortTermMarketSummary.empty(Market.bist),
+      ),
+      newAllocation: allocation,
+    );
+    return PusulaAppState(
+      settings: settings,
+      currentReport: report,
+      archivedReports: const [],
+      performanceCurve: const [],
+      activeSignals: const [],
+      allSignals: const [],
+      cryptoQuotes: const [],
+      bistQuotes: const [],
+      recentNotifications: const [],
+      providerHealthList: const [],
+      scheduleSnapshot: BackgroundScheduleSnapshot(
+        periodicIntervalMinutes: 15,
+        nextSundayReportUtc: BackgroundScheduler.nextSundayReportUtc(now),
+        nextBistOpenUtc: const BistCalendar().nextOpen(now),
+        nextBistCloseUtc: BackgroundScheduler().nextBistCloseUtc(now),
+        liveMonitorActive: settings.liveMonitorEnabled,
+        batteryOptimizationIgnored: false,
+      ),
+      optimizationProposal: _emptyProposal(now),
+      isLoading: false,
+      statusMessage: 'Henüz tarama yapılmadı.',
+    );
   }
 
   static SignalRecord _makeSeedSignal({
@@ -320,7 +396,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       interval: interval,
       strategy: strategy,
       allSetups: [strategy],
-      strategyVersion: '2.0.0',
+      strategyVersion: kStrategyVersion,
       entryZoneLow: entryZoneLow,
       entryZoneHigh: entryZoneHigh,
       entryPrice: entryPrice,
@@ -849,7 +925,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       canModifyParameters: false,
       proposedVersion: null,
       summaryReportTr:
-          'Hiçbir strateji henüz 30 kapanmış sinyal eşiğine ulaşmadı. Aşırı uyum (overfitting) yasağı gereği tüm parametreler v2.0.0 sürümünde korundu.',
+          'Hiçbir strateji henüz 30 kapanmış sinyal eşiğine ulaşmadı. Aşırı uyum (overfitting) yasağı gereği tüm parametreler v$kStrategyVersion sürümünde korundu.',
     );
 
     return PusulaAppState(
@@ -867,230 +943,132 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       optimizationProposal: seedProposal,
       isLoading: false,
       lastRefreshedAt: now,
+      isDemo: true,
+      statusMessage: 'Örnek veri gösteriliyor.',
     );
   }
 
-  Future<void> _hydrateFromStorage() async {
-    final loadedSettings = await storage.settingsStore.load();
-    final existingSignals = await storage.journalStore.allSignals();
-    final hasLegacyStaleSeed = existingSignals.any((s) => _legacyStaleSeedIds.contains(s.id));
+  /// Ayarlarda kayıtlı eski strateji sürümünü etkin taban sürüme taşır.
+  static AppSettings _migrateSettings(AppSettings loaded) =>
+      loaded.activeStrategyVersion == '2.0.0' ? loaded.copyWith(activeStrategyVersion: kStrategyVersion) : loaded;
 
-    if (existingSignals.isEmpty || hasLegacyStaleSeed) {
-      if (hasLegacyStaleSeed) {
-        await storage.journalStore.clear();
-        await storage.reportStore.clear();
-      }
+  Future<void> _hydrateFromStorage() async {
+    final loadedSettings = _migrateSettings(await storage.settingsStore.load());
+
+    if (demoSeed) {
+      // Örnek kip: örnek kayıtlar yalnızca bellek içi depoya yazılır.
       for (final s in state.allSignals) {
         await storage.journalStore.save(s);
       }
       await storage.reportStore.save(state.currentReport);
-    } else {
-      final reports = await storage.reportStore.allReports();
-      final active = await storage.journalStore.activeSignals();
-      state = state.copyWith(
-        settings: loadedSettings,
-        allSignals: existingSignals,
-        activeSignals: active,
-        archivedReports: reports.isEmpty ? state.archivedReports : reports,
-        currentReport: reports.isEmpty ? state.currentReport : reports.first,
-      );
+      if (loadedSettings != state.settings) {
+        await _applySettings(loadedSettings);
+      }
       return;
     }
-    if (loadedSettings != state.settings) {
-      await _applySettings(loadedSettings);
+
+    // Gerçek kip: önceki sürümlerin diske yazdığı ÖRNEK sinyaller (kimliği `sig_` ile başlar) ve onlardan
+    // üretilmiş raporlar temizlenir. O sürümlerde gerçek huni çalışmadığı için kaybolan gerçek kayıt yoktur.
+    var signals = await storage.journalStore.allSignals();
+    if (signals.any((s) => s.id.startsWith('sig_'))) {
+      await storage.journalStore.clear();
+      await storage.reportStore.clear();
+      signals = const [];
     }
+    final reports = await storage.reportStore.allReports();
+    final active = await storage.journalStore.activeSignals();
+    if (!mounted) return;
+    state = state.copyWith(
+      settings: loadedSettings,
+      allSignals: signals,
+      activeSignals: active,
+      archivedReports: reports,
+      currentReport: reports.isEmpty ? state.currentReport : reports.first,
+      performanceCurve: performanceCurveFrom(reports),
+      statusMessage: signals.isEmpty ? 'Henüz tarama yapılmadı.' : 'Kayıtlı sinyaller yüklendi; tarama bekleniyor.',
+    );
+    await _applySettings(loadedSettings);
   }
 
-  /// Binance, Yahoo Finance ve İş Yatırım üzerinden canlı BIST ve Kripto verilerini çeker,
-  /// fiyatları ve aktif sinyal seviyelerini güncel piyasa verileriyle yeniler.
-  Future<void> refreshLiveMarketData() async {
-    if (!mounted) return;
+  /// Canlı veriyi çeker, analiz hunisini tüm evrende koşturur ve ekran durumunu GERÇEK sonuçla günceller.
+  ///
+  /// Hiçbir seviye "canlı fiyata yapıştırılmaz": giriş/stop/hedef yalnızca hunide onaylanan kapanmış
+  /// mum kurulumundan gelir. Onaylanan fırsat yoksa portföy dürüstçe %100 nakit gösterilir.
+  Future<void> refreshLiveMarketData({bool forceRefresh = false}) async {
+    if (!mounted || state.isLoading) return;
+    if (demoSeed) {
+      state = state.copyWith(statusMessage: 'Örnek veri kipinde canlı tarama kapalıdır.');
+      return;
+    }
     state = state.copyWith(
       isLoading: true,
-      statusMessage: 'Canlı BIST ve Kripto fiyatları güncelleniyor...',
+      scanProgress: 0.0,
+      statusMessage: 'Piyasa taranıyor…',
     );
 
-    final httpFetcher = PusulaHttpFetcher();
-    final marketSvc = MarketDataService(
-      providers: [
-        BinanceProvider(httpFetcher),
-        YahooProvider(httpFetcher),
-        IsYatirimProvider(httpFetcher),
-      ],
-      cache: storage.candleCache,
+    final runner = ScanRunner(
+      storage: storage,
+      coordinator: _notificationCoordinator,
+      versionStore: _versionStore,
       clock: _clock,
+      dataServiceFactory: dataServiceFactory,
     );
 
-    final now = _clock().toUtc();
-    final liveSeriesBySymbol = <String, CandleSeries>{};
-    final updatedCryptoQuotes = <LiveMarketQuote>[];
-    final updatedBistQuotes = <LiveMarketQuote>[];
-
-    // 1. Kripto Evreni (10 sabit sembol) — Binance canlı veri
-    for (final ins in CryptoUniverse.instruments) {
-      try {
-        final s = await marketSvc.candles(ins, BarInterval.h1, limit: 60, forceRefresh: true);
-        liveSeriesBySymbol[ins.symbol] = s;
-        final prevClose = s.closed.length >= 2 ? s.closed[s.closed.length - 2].close : s.lastPrice;
-        final chg = prevClose > 0 ? ((s.lastPrice / prevClose) - 1.0) * 100.0 : 0.0;
-        updatedCryptoQuotes.add(
-          LiveMarketQuote(
-            instrument: ins,
-            lastPrice: s.lastPrice,
-            changePct: chg,
-            sourceLabel: s.source == 'binance_futures' ? 'Binance Futures' : 'Binance Spot',
-            ageMinutes: s.ageAt(now).inMinutes.clamp(0, 999),
-            isStale: s.stale,
-          ),
-        );
-      } catch (_) {
-        final fallback = state.cryptoQuotes.where((q) => q.instrument.symbol == ins.symbol).firstOrNull;
-        if (fallback != null) updatedCryptoQuotes.add(fallback);
-      }
+    try {
+      final r = await runner.run(
+        settings: state.settings,
+        forceRefresh: forceRefresh,
+        onProgress: (done, total) {
+          if (!mounted || total <= 0) return;
+          // Her adımda yeniden çizim yapmamak için ilerleme %5'lik dilimlerle yayınlanır.
+          final p = ((done / total) * 20).floor() / 20.0;
+          if (p != state.scanProgress) {
+            state = state.copyWith(
+              isLoading: true,
+              scanProgress: p,
+              statusMessage: 'Piyasa taranıyor… $done/$total',
+            );
+          }
+        },
+      );
+      if (!mounted) return;
+      state = state.copyWith(
+        allSignals: r.allSignals,
+        activeSignals: r.activeSignals,
+        currentReport: r.report,
+        archivedReports: r.archive,
+        performanceCurve: r.curve,
+        cryptoQuotes: r.cryptoQuotes.isNotEmpty ? r.cryptoQuotes : state.cryptoQuotes,
+        bistQuotes: r.bistQuotes.isNotEmpty ? r.bistQuotes : state.bistQuotes,
+        providerHealthList: r.health,
+        optimizationProposal: r.proposal,
+        recentNotifications: _mergedNotifications(),
+        lastScan: r.outcome,
+        isLoading: false,
+        lastRefreshedAt: _clock().toUtc(),
+        statusMessage: r.outcome.summaryTr,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      // Ayrıntı (URL, sorgu) kullanıcıya/loga taşınmaz; yalnızca hata türü gösterilir.
+      state = state.copyWith(
+        isLoading: false,
+        statusMessage: 'Tarama tamamlanamadı (${e.runtimeType}). Önceki sonuçlar korunuyor.',
+      );
     }
-
-    // 2. BIST İzleme Listesi — Yahoo Finance (.IS) ve İş Yatırım canlı/gecikmeli veri
-    for (final ins in watchedBistInstruments) {
-      try {
-        final s = await marketSvc.candles(ins, BarInterval.d1, limit: 60, forceRefresh: true);
-        liveSeriesBySymbol[ins.symbol] = s;
-        final prevClose = s.closed.length >= 2 ? s.closed[s.closed.length - 2].close : s.lastPrice;
-        final chg = prevClose > 0 ? ((s.lastPrice / prevClose) - 1.0) * 100.0 : 0.0;
-        updatedBistQuotes.add(
-          LiveMarketQuote(
-            instrument: ins,
-            lastPrice: s.lastPrice,
-            changePct: chg,
-            sourceLabel: s.source == 'isyatirim' ? 'İş Yatırım (Gün Sonu)' : 'Yahoo Finance (~15 dk)',
-            ageMinutes: s.ageAt(now).inMinutes.clamp(15, 9999),
-            isStale: s.stale,
-          ),
-        );
-      } catch (_) {
-        final fallback = state.bistQuotes.where((q) => q.instrument.symbol == ins.symbol).firstOrNull;
-        if (fallback != null) updatedBistQuotes.add(fallback);
-      }
-    }
-
-    httpFetcher.close();
-    if (!mounted) return;
-
-    // 3. Aktif sinyallerin giriş/stop/hedef seviyelerini çekilen gerçek canlı fiyat ve ATR ile güncelle
-    final updatedAllSignals = <SignalRecord>[];
-    for (final sig in state.allSignals) {
-      final liveSeries = liveSeriesBySymbol[sig.instrument.symbol];
-      if (liveSeries == null || liveSeries.lastPrice <= 0) {
-        updatedAllSignals.add(sig);
-        continue;
-      }
-      final livePrice = liveSeries.lastPrice;
-      final isBist = sig.instrument.market == Market.bist;
-      final atr = liveSeries.closed.length >= 15
-          ? Indicators.computeAtr(liveSeries.closed, period: 14)
-          : livePrice * (isBist ? 0.025 : 0.018);
-
-      double roundPrice(double v) {
-        if (isBist) return BistRules.roundToTick(v);
-        if (v >= 1000) return double.parse(v.toStringAsFixed(2));
-        if (v >= 10) return double.parse(v.toStringAsFixed(2));
-        if (v >= 1) return double.parse(v.toStringAsFixed(4));
-        return double.parse(v.toStringAsFixed(6));
-      }
-
-      if (sig.isActive) {
-        final entry = roundPrice(livePrice);
-        final band = (atr * 0.25).clamp(entry * 0.003, entry * 0.012);
-        final zoneLow = roundPrice(entry - band);
-        final zoneHigh = roundPrice(entry + band);
-        final riskDist = (atr * 1.6).clamp(entry * 0.022, entry * 0.045);
-        final stop = roundPrice(entry - riskDist);
-        final actualRisk = (entry - stop) > 0 ? (entry - stop) : entry * 0.03;
-        final t1 = roundPrice(entry + actualRisk * 1.0);
-        final t2 = roundPrice(entry + actualRisk * 2.0);
-        final ageMs = liveSeries.ageAt(now).inMilliseconds.clamp(0, 86400000);
-        final srcLabel = liveSeries.source == 'yahoo'
-            ? 'Yahoo Finance'
-            : (liveSeries.source == 'isyatirim' ? 'İş Yatırım' : 'Binance Spot');
-
-        updatedAllSignals.add(
-          SignalRecord(
-            id: sig.id,
-            instrument: sig.instrument,
-            interval: sig.interval,
-            strategy: sig.strategy,
-            allSetups: sig.allSetups,
-            strategyVersion: sig.strategyVersion,
-            entryZoneLow: zoneLow,
-            entryZoneHigh: zoneHigh,
-            entryPrice: entry,
-            initialStop: stop,
-            currentStop: stop,
-            target1: t1,
-            target2: t2,
-            rewardRisk: 2.0,
-            confidence: sig.confidence,
-            rationale:
-                '${sig.strategy.label} · Canlı fiyat ${entry.toStringAsFixed(2).replaceAll('.', ',')} ${sig.instrument.currency} ($srcLabel).',
-            invalidationRule: '${stop.toStringAsFixed(2).replaceAll('.', ',')} ${sig.instrument.currency} altı kapanış kurulumu geçersiz kılar.',
-            regime: sig.regime,
-            dataSource: srcLabel,
-            dataAgeMs: ageMs,
-            dataStale: liveSeries.stale,
-            createdAt: sig.createdAt,
-            expiresAt: sig.expiresAt,
-            status: sig.status,
-            isWeeklyProposal: sig.isWeeklyProposal,
-            allocatedWeightPct: sig.allocatedWeightPct,
-          ),
-        );
-      } else {
-        updatedAllSignals.add(sig);
-      }
-    }
-
-    final updatedActive = updatedAllSignals.where((s) => s.isActive).toList();
-    const allocator = PortfolioWeightAllocator();
-    final updatedAllocation = allocator.allocate(
-      updatedActive,
-      appetite: state.settings.riskAppetite,
-      totalBudget: state.settings.budgetAmount,
-    );
-
-    final updatedReport = WeeklyReport(
-      id: state.currentReport.id,
-      weekStart: state.currentReport.weekStart,
-      weekEnd: now,
-      generatedAt: now,
-      lastWeekReview: state.currentReport.lastWeekReview,
-      shortTermReport: state.currentReport.shortTermReport,
-      newAllocation: updatedAllocation,
-    );
-
-    for (final s in updatedAllSignals) {
-      await storage.journalStore.save(s);
-    }
-    await storage.reportStore.save(updatedReport);
-
-    if (!mounted) return;
-    state = state.copyWith(
-      allSignals: updatedAllSignals,
-      activeSignals: updatedActive,
-      currentReport: updatedReport,
-      cryptoQuotes: updatedCryptoQuotes.isNotEmpty ? updatedCryptoQuotes : state.cryptoQuotes,
-      bistQuotes: updatedBistQuotes.isNotEmpty ? updatedBistQuotes : state.bistQuotes,
-      providerHealthList: marketSvc.health.any((h) => h.successCount > 0 || h.failureCount > 0)
-          ? marketSvc.health
-          : state.providerHealthList,
-      isLoading: false,
-      lastRefreshedAt: now,
-      statusMessage: 'Canlı veriler güncellendi (${liveSeriesBySymbol.length} varlık).',
-    );
   }
+
+  List<LocalNotificationItem> _mergedNotifications() => [
+        ..._notificationCoordinator.recentNotifications,
+        ...state.recentNotifications.where(
+          (old) => !_notificationCoordinator.recentNotifications.any((n) => n.id == old.id),
+        ),
+      ];
 
   Future<void> _applySettings(AppSettings next) async {
     const allocator = PortfolioWeightAllocator();
     final allocation = allocator.allocate(
-      state.activeSignals,
+      state.activeWeeklySignals,
       appetite: next.riskAppetite,
       totalBudget: next.budgetAmount,
     );
@@ -1106,11 +1084,17 @@ class PusulaController extends StateNotifier<PusulaAppState> {
     state = state.copyWith(
       settings: next,
       currentReport: updatedReport,
+      statusMessage: state.statusMessage,
+      scanProgress: state.scanProgress,
     );
     await storage.settingsStore.save(next);
     final schedule = await _scheduler.syncSchedule(liveMonitorEnabled: next.liveMonitorEnabled);
     if (mounted) {
-      state = state.copyWith(scheduleSnapshot: schedule);
+      state = state.copyWith(
+        scheduleSnapshot: schedule,
+        statusMessage: state.statusMessage,
+        scanProgress: state.scanProgress,
+      );
     }
   }
 
@@ -1169,16 +1153,19 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       settings: state.settings,
       symbol: 'SOLUSDT',
     );
-    final combined = [
-      ..._notificationCoordinator.recentNotifications,
-      ...state.recentNotifications.where(
-        (old) => !_notificationCoordinator.recentNotifications.any((n) => n.id == old.id),
-      ),
-    ];
     state = state.copyWith(
-      recentNotifications: combined,
+      recentNotifications: _mergedNotifications(),
       statusMessage: 'Yerel bildirim gönderildi: $body',
     );
+  }
+
+  /// Android pil optimizasyonu muafiyet penceresini açar ve zamanlama özetini yeniler.
+  Future<void> requestBatteryExemption() async {
+    await _scheduler.requestIgnoreBatteryOptimizations();
+    final schedule = await _scheduler.syncSchedule(liveMonitorEnabled: state.settings.liveMonitorEnabled);
+    if (mounted) {
+      state = state.copyWith(scheduleSnapshot: schedule, statusMessage: state.statusMessage);
+    }
   }
 
   /// Önceki strateji sürümüne tek dokunuşla geri alır (Faz 6.2).
@@ -1191,5 +1178,185 @@ class PusulaController extends StateNotifier<PusulaAppState> {
   /// Kullanıcı ayarlarını varsayılan başlangıç değerlerine sıfırlar (Faz 7.3 çok kullanıcı denetimi).
   Future<void> resetSettingsToDefault() async {
     await _applySettings(const AppSettings());
+  }
+
+  /// GitHub Releases otomatik güncelleme deposunu kaydeder (`kullanici/depo`).
+  Future<void> updateGitHubRepo(String repo) async {
+    final clean = repo.trim();
+    if (clean.isNotEmpty && !AppUpdateService.isValidGitHubRepo(clean)) {
+      state = state.copyWith(
+        updateState: state.updateState.copyWith(
+          status: UpdateStatus.error,
+          message: 'Depo adı "kullanici/depo" biçiminde olmalıdır.',
+        ),
+        statusMessage: state.statusMessage,
+        scanProgress: state.scanProgress,
+      );
+      return;
+    }
+    await _applySettings(state.settings.copyWith(updateRepo: clean));
+    if (clean.isEmpty) {
+      if (!mounted) return;
+      state = state.copyWith(
+        updateState: state.updateState.copyWith(
+          status: UpdateStatus.idle,
+          clearRelease: true,
+          clearProgress: true,
+          clearMessage: true,
+        ),
+        statusMessage: state.statusMessage,
+        scanProgress: state.scanProgress,
+      );
+    }
+  }
+
+  Future<void> toggleAutoCheckUpdates(bool value) async {
+    await _applySettings(state.settings.copyWith(autoCheckUpdates: value));
+  }
+
+  /// GitHub Releases üzerinden yeni APK sürümü olup olmadığını denetler.
+  Future<void> checkForAppUpdate({bool silent = false}) async {
+    if (!mounted) return;
+    final repo = state.settings.updateRepo.trim();
+    if (repo.isEmpty) {
+      if (!silent) {
+        state = state.copyWith(
+          updateState: state.updateState.copyWith(
+            status: UpdateStatus.error,
+            message: 'Önce Ayarlar → Uygulama Güncelleme bölümünden GitHub deposunu ("kullanici/depo") girin.',
+          ),
+          statusMessage: state.statusMessage,
+          scanProgress: state.scanProgress,
+        );
+      }
+      return;
+    }
+
+    if (!silent) {
+      state = state.copyWith(
+        updateState: state.updateState.copyWith(
+          status: UpdateStatus.checking,
+          clearProgress: true,
+          message: 'GitHub Releases kontrol ediliyor…',
+        ),
+        statusMessage: state.statusMessage,
+        scanProgress: state.scanProgress,
+      );
+    }
+
+    try {
+      final res = await _updater.checkLatest(repo: repo);
+      if (!mounted) return;
+      if (res.updateAvailable && res.latestRelease != null) {
+        final rel = res.latestRelease!;
+        state = state.copyWith(
+          updateState: state.updateState.copyWith(
+            status: UpdateStatus.available,
+            currentVersion: res.currentVersion,
+            availableRelease: rel,
+            clearProgress: true,
+            message: '${rel.version.label} sürümü hazır (${rel.sizeLabel}).',
+          ),
+          statusMessage: state.statusMessage,
+          scanProgress: state.scanProgress,
+        );
+      } else {
+        state = state.copyWith(
+          updateState: state.updateState.copyWith(
+            status: silent ? UpdateStatus.idle : UpdateStatus.upToDate,
+            currentVersion: res.currentVersion,
+            clearRelease: true,
+            clearProgress: true,
+            message: silent ? null : 'Uygulama güncel (${res.currentVersion.label}).',
+            clearMessage: silent,
+          ),
+          statusMessage: state.statusMessage,
+          scanProgress: state.scanProgress,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      if (silent) return;
+      state = state.copyWith(
+        updateState: state.updateState.copyWith(
+          status: UpdateStatus.error,
+          clearProgress: true,
+          message: 'Güncelleme denetlenemedi (${e.runtimeType}). İnterneti ve repo adını kontrol edin.',
+        ),
+        statusMessage: state.statusMessage,
+        scanProgress: state.scanProgress,
+      );
+    }
+  }
+
+  /// Bulunan yeni APK sürümünü indirir ve Android sistem yükleme ekranını açar.
+  Future<void> downloadAndInstallUpdate() async {
+    final release = state.updateState.availableRelease;
+    if (!mounted || release == null) return;
+    if (state.updateState.status == UpdateStatus.downloading) return;
+
+    state = state.copyWith(
+      updateState: state.updateState.copyWith(
+        status: UpdateStatus.downloading,
+        downloadProgress: 0.0,
+        message: '${release.version.label} indiriliyor…',
+      ),
+      statusMessage: state.statusMessage,
+      scanProgress: state.scanProgress,
+    );
+
+    try {
+      final outcome = await _updater.downloadAndInstall(
+        release,
+        onProgress: (p) {
+          if (!mounted) return;
+          final snapped = (p * 20).floor() / 20.0;
+          if (snapped != state.updateState.downloadProgress) {
+            state = state.copyWith(
+              updateState: state.updateState.copyWith(
+                status: UpdateStatus.downloading,
+                downloadProgress: snapped,
+                message: '${release.version.label} indiriliyor… %${(p * 100).round()}',
+              ),
+              statusMessage: state.statusMessage,
+              scanProgress: state.scanProgress,
+            );
+          }
+        },
+      );
+      if (!mounted) return;
+      if (outcome == UpdateStatus.permissionRequired) {
+        state = state.copyWith(
+          updateState: state.updateState.copyWith(
+            status: UpdateStatus.permissionRequired,
+            clearProgress: true,
+            message: 'Açılan Android ayarlarından "Bu kaynaktan izin ver" seçeneğini açıp tekrar "İndir ve Güncelle"ye dokunun.',
+          ),
+          statusMessage: state.statusMessage,
+          scanProgress: state.scanProgress,
+        );
+      } else {
+        state = state.copyWith(
+          updateState: state.updateState.copyWith(
+            status: UpdateStatus.readyToInstall,
+            downloadProgress: 1.0,
+            message: 'Android kurulum ekranı açıldı. "Güncelle"ye dokunarak tamamlayın.',
+          ),
+          statusMessage: state.statusMessage,
+          scanProgress: state.scanProgress,
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+      state = state.copyWith(
+        updateState: state.updateState.copyWith(
+          status: UpdateStatus.error,
+          clearProgress: true,
+          message: 'APK indirilemedi (${e.runtimeType}).',
+        ),
+        statusMessage: state.statusMessage,
+        scanProgress: state.scanProgress,
+      );
+    }
   }
 }

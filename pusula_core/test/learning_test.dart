@@ -93,10 +93,10 @@ void main() {
       expect(orbStats.observationNoteTr, contains('Wilson %95 GA'));
 
       final activeVer = await versionStore.active();
-      expect(activeVer.version, '2.0.0');
+      expect(activeVer.version, '2.1.0');
     });
 
-    test('30+ kapanmış sinyalde yeni sürüm (v2.1.0) önerilir/uygulanır ve tek adımla v2.0.0 sürümüne geri alınır',
+    test('30+ kapanmış sinyalde yeni sürüm (v2.2.0) önerilir/uygulanır ve tek adımla v2.1.0 sürümüne geri alınır',
         () async {
       final journal = MemorySignalJournalStore();
       final versionStore = MemoryStrategyVersionStore();
@@ -121,8 +121,8 @@ void main() {
       final proposal = await optimizer.evaluate(autoApplyIfEligible: true);
       expect(proposal.canModifyParameters, isTrue);
       expect(proposal.proposedVersion, isNotNull);
-      expect(proposal.proposedVersion!.version, '2.1.0');
-      expect(proposal.proposedVersion!.parentVersion, '2.0.0');
+      expect(proposal.proposedVersion!.version, '2.2.0');
+      expect(proposal.proposedVersion!.parentVersion, '2.1.0');
 
       // ORB güven eşiği 55 -> 60 ve hacim eşiği 1.15 -> 1.25 sıkılaştırılmış olmalı
       final newOrbParams = proposal.proposedVersion!.paramsFor(SetupType.orb);
@@ -133,14 +133,14 @@ void main() {
       final bullFlagParams = proposal.proposedVersion!.paramsFor(SetupType.bullFlag);
       expect(bullFlagParams.minConfidenceScore, 55);
 
-      // Aktif sürüm 2.1.0 oldu
-      expect((await versionStore.active()).version, '2.1.0');
+      // Aktif sürüm 2.2.0 oldu
+      expect((await versionStore.active()).version, '2.2.0');
 
-      // Tek dokunuşla önceki sürüme (2.0.0) geri alma
+      // Tek dokunuşla önceki sürüme (2.1.0) geri alma
       final rolledBack = await versionStore.rollbackToPrevious();
       expect(rolledBack, isNotNull);
-      expect(rolledBack!.version, '2.0.0');
-      expect((await versionStore.active()).version, '2.0.0');
+      expect(rolledBack!.version, '2.1.0');
+      expect((await versionStore.active()).version, '2.1.0');
       expect((await versionStore.active()).paramsFor(SetupType.orb).minConfidenceScore, 55);
     });
   });

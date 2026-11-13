@@ -393,23 +393,29 @@ class MemoryWeeklyReportStore implements WeeklyReportStore {
   Future<void> clear() async => _store.clear();
 
   /// Arşivlenmiş raporlardan ileriye dönük bileşik performans eğrisini hesaplar.
-  Future<List<PerformanceCurvePoint>> buildPerformanceCurve() async {
-    final reports = _store.values.toList()..sort((a, b) => a.generatedAt.compareTo(b.generatedAt));
-    final points = <PerformanceCurvePoint>[];
-    var index = 100.0;
-    for (final r in reports) {
-      if (!r.lastWeekReview.hasData) continue;
-      final wRet = r.lastWeekReview.weightedPortfolioReturnPct;
-      index = index * (1.0 + wRet / 100.0);
-      points.add(PerformanceCurvePoint(
-        reportId: r.id,
-        date: r.generatedAt,
-        weeklyReturnPct: wRet,
-        cumulativeIndex: double.parse(index.toStringAsFixed(2)),
-        cumulativeReturnPct: double.parse((index - 100.0).toStringAsFixed(2)),
-      ));
-    }
-    return points;
-  }
+  Future<List<PerformanceCurvePoint>> buildPerformanceCurve() async =>
+      performanceCurveFrom(_store.values);
 }
 
+/// Haftalık raporlardan 100 bazlı bileşik performans eğrisi üretir.
+///
+/// Yalnızca `lastWeekReview.hasData` olan (yani ileriye dönük gerçekleşmiş sonucu bulunan) raporlar
+/// eğriye girer; geçmiş mumlardan veri türetilmez (Kısıt 2).
+List<PerformanceCurvePoint> performanceCurveFrom(Iterable<WeeklyReport> reports) {
+  final sorted = reports.toList()..sort((a, b) => a.generatedAt.compareTo(b.generatedAt));
+  final points = <PerformanceCurvePoint>[];
+  var index = 100.0;
+  for (final r in sorted) {
+    if (!r.lastWeekReview.hasData) continue;
+    final wRet = r.lastWeekReview.weightedPortfolioReturnPct;
+    index = index * (1.0 + wRet / 100.0);
+    points.add(PerformanceCurvePoint(
+      reportId: r.id,
+      date: r.generatedAt,
+      weeklyReturnPct: wRet,
+      cumulativeIndex: double.parse(index.toStringAsFixed(2)),
+      cumulativeReturnPct: double.parse((index - 100.0).toStringAsFixed(2)),
+    ));
+  }
+  return points;
+}

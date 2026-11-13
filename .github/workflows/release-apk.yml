@@ -1,0 +1,104 @@
+name: Android APK Yayınla (GitHub Releases)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Sürüm etiketi (ör. v1.0.1+2)'
+        required: true
+
+jobs:
+  build_and_release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Depoyu indir
+        uses: actions/checkout@v4
+
+      - name: Java 17 kur
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Flutter kur
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.47.9'
+          channel: 'stable'
+          cache: true
+
+      - name: pusula_core analiz ve test
+        working-directory: pusula_core
+        run: |
+          dart pub get
+          dart analyze
+          dart test
+
+      - name: pusula_app analiz ve test
+        working-directory: pusula_app
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test
+
+      - name: Kişisel imza anahtarını hazırla (varsa)
+        env:
+          KEYSTORE_B64: ${{ secrets.PUSULA_KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.PUSULA_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.PUSULA_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.PUSULA_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$KEYSTORE_PASS" ]; then
+            echo "$KEYSTORE_B64" | base64 --decode > pusula_app/android/pusula-release.jks
+            ALIAS="${KEY_ALIAS:-pusula}"
+            KPASS="${KEY_PASS:-$KEYSTORE_PASS}"
+            cat > pusula_app/android/key.properties <<EOF
+          storeFile=../pusula-release.jks
+          storePassword=$KEYSTORE_PASS
+          keyAlias=$ALIAS
+          keyPassword=$KPASS
+          EOF
+            echo "Kişisel release imzası etkinleştirildi."
+          else
+            echo "PUSULA_KEYSTORE_BASE64 gizli anahtarı yok; debug imzasıyla derlenecek."
+          fi
+
+      - name: Sürüm adını ve kodunu etiketten çıkar
+        id: ver
+        run: |
+          RAW_TAG="${{ github.event.inputs.tag_name || github.ref_name }}"
+          CLEAN="${RAW_TAG#v}"
+          if [[ "$CLEAN" == *"+"* ]]; then
+            NAME="${CLEAN%%+*}"
+            CODE="${CLEAN##*+}"
+          else
+            NAME="$CLEAN"
+            CODE="${{ github.run_number }}"
+          fi
+          echo "tag=$RAW_TAG" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+
+      - name: Release APK derle
+        working-directory: pusula_app
+        run: |
+          flutter build apk --release \
+            --build-name="${{ steps.ver.outputs.name }}" \
+            --build-number="${{ steps.ver.outputs.code }}"
+          cp build/app/outputs/flutter-apk/app-release.apk \
+             "../pusula-${{ steps.ver.outputs.tag }}.apk"
+
+      - name: GitHub Release yayımla
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: "Pusula ${{ steps.ver.outputs.tag }}"
+          generate_release_notes: true
+          files: "pusula-${{ steps.ver.outputs.tag }}.apk"
+

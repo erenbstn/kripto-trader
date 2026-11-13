@@ -20,7 +20,9 @@ class AppSettings {
     this.quietEndHourTrt = 8,
     this.maxDailyNotifications = 20,
     this.liveMonitorEnabled = false,
-    this.activeStrategyVersion = '2.0.0',
+    this.activeStrategyVersion = kStrategyVersion,
+    this.updateRepo = '',
+    this.autoCheckUpdates = true,
   });
 
   /// Kullanıcının referans portföy bütçesi (TL). Yalnızca ağırlık tutarı gösterimi içindir.
@@ -51,6 +53,12 @@ class AppSettings {
 
   final String activeStrategyVersion;
 
+  /// GitHub Releases otomatik APK güncelleme deposu ("kullanici/depo"). Boşsa denetim yapılmaz.
+  final String updateRepo;
+
+  /// Uygulama açılışında GitHub Releases üzerinden sessiz güncelleme denetimi.
+  final bool autoCheckUpdates;
+
   /// Animasyonların sadeleştirilmesi gerekiyor mu? (Kısıt 10).
   bool get shouldSimplifyAnimations => reduceAnimations || batterySaverMode;
 
@@ -70,6 +78,8 @@ class AppSettings {
     int? maxDailyNotifications,
     bool? liveMonitorEnabled,
     String? activeStrategyVersion,
+    String? updateRepo,
+    bool? autoCheckUpdates,
   }) =>
       AppSettings(
         budgetAmount: budgetAmount ?? this.budgetAmount,
@@ -87,6 +97,8 @@ class AppSettings {
         maxDailyNotifications: maxDailyNotifications ?? this.maxDailyNotifications,
         liveMonitorEnabled: liveMonitorEnabled ?? this.liveMonitorEnabled,
         activeStrategyVersion: activeStrategyVersion ?? this.activeStrategyVersion,
+        updateRepo: updateRepo ?? this.updateRepo,
+        autoCheckUpdates: autoCheckUpdates ?? this.autoCheckUpdates,
       );
 
   Map<String, Object?> toJson() => {
@@ -105,6 +117,8 @@ class AppSettings {
         'maxDailyNotifications': maxDailyNotifications,
         'liveMonitorEnabled': liveMonitorEnabled,
         'activeStrategyVersion': activeStrategyVersion,
+        'updateRepo': updateRepo,
+        'autoCheckUpdates': autoCheckUpdates,
       };
 
   static AppSettings fromJson(Map<String, Object?> j) => AppSettings(
@@ -128,6 +142,8 @@ class AppSettings {
         maxDailyNotifications: (j['maxDailyNotifications'] as num?)?.toInt() ?? 20,
         liveMonitorEnabled: (j['liveMonitorEnabled'] as bool?) ?? false,
         activeStrategyVersion: (j['activeStrategyVersion'] as String?) ?? '2.0.0',
+        updateRepo: (j['updateRepo'] as String?) ?? '',
+        autoCheckUpdates: (j['autoCheckUpdates'] as bool?) ?? true,
       );
 }
 

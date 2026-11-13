@@ -1,0 +1,751 @@
+import 'dart:math' as math;
+
+import 'package:flutter/material.dart';
+import 'package:pusula_core/pusula_core.dart';
+
+import '../theme/gunduz_theme.dart';
+
+/// Türkçe sayı, fiyat ve zaman biçimlendiricileri (ondalık virgül, binlik nokta).
+class Fmt {
+  const Fmt._();
+
+  static String number(double v, {int decimals = 2}) {
+    final neg = v < 0;
+    final fixed = v.abs().toStringAsFixed(decimals);
+    final parts = fixed.split('.');
+    final intPart = parts[0];
+    final buf = StringBuffer();
+    for (var i = 0; i < intPart.length; i++) {
+      if (i > 0 && (intPart.length - i) % 3 == 0) buf.write('.');
+      buf.write(intPart[i]);
+    }
+    final dec = parts.length > 1 ? ',${parts[1]}' : '';
+    return '${neg ? '-' : ''}$buf$dec';
+  }
+
+  /// Piyasa ve büyüklüğe göre anlamlı basamak sayısıyla fiyat.
+  static String price(double v, Market market) {
+    if (market == Market.bist) return number(v, decimals: 2);
+    final a = v.abs();
+    final d = a >= 1000 ? 0 : (a >= 100 ? 2 : (a >= 1 ? 3 : (a >= 0.01 ? 4 : 6)));
+    return number(v, decimals: d);
+  }
+
+  static String currency(Market market) => market == Market.bist ? 'TL' : 'USDT';
+
+  /// `%12,5` biçimi; [signed] ise `+%1,2` / `-%0,8`.
+  static String pct(double v, {int decimals = 1, bool signed = false}) {
+    final body = '%${number(v.abs(), decimals: decimals)}';
+    if (!signed) return v < 0 ? '-$body' : body;
+    if (v > 0) return '+$body';
+    if (v < 0) return '-$body';
+    return body;
+  }
+
+  static String r(double v, {int decimals = 2}) =>
+      '${v > 0 ? '+' : (v < 0 ? '-' : '')}${number(v.abs(), decimals: decimals)}R';
+
+  static String tl(double v) => '${number(v, decimals: 0)} TL';
+
+  static String ago(DateTime t, DateTime now) {
+    final d = now.toUtc().difference(t.toUtc());
+    if (d.inMinutes < 1) return 'az önce';
+    if (d.inMinutes < 60) return '${d.inMinutes} dk önce';
+    if (d.inHours < 48) return '${d.inHours} sa önce';
+    return '${d.inDays} gün önce';
+  }
+
+  static String _two(int n) => n.toString().padLeft(2, '0');
+
+  /// Türkiye saatiyle `12.11 14:05`.
+  static String dateTimeTrt(DateTime utc) {
+    final t = BistCalendar.toTrt(utc);
+    return '${_two(t.day)}.${_two(t.month)} ${_two(t.hour)}:${_two(t.minute)}';
+  }
+
+  /// Türkiye saatiyle `12.11.2026`.
+  static String dateTrt(DateTime utc) {
+    final t = BistCalendar.toTrt(utc);
+    return '${_two(t.day)}.${_two(t.month)}.${t.year}';
+  }
+
+  static String clockTrt(DateTime utc) {
+    final t = BistCalendar.toTrt(utc);
+    return '${_two(t.hour)}:${_two(t.minute)}';
+  }
+}
+
+/// Ekran genişliği geniş (masaüstü / web) yerleşim gerektiriyor mu?
+bool isWideLayout(BuildContext context) => MediaQuery.sizeOf(context).width >= PusulaSpace.wideBreakpoint;
+
+/// Sayfa gövdesi: telefonda tek sütun kaydırma listesi, geniş ekranda iki sütunlu pano.
+///
+/// Telefonda [primary] ardından [secondary] sırayla dizilir (bilgi hiyerarşisi korunur).
+class PageBody extends StatelessWidget {
+  const PageBody({
+    super.key,
+    required this.primary,
+    this.secondary = const [],
+    this.primaryFlex = 6,
+    this.secondaryFlex = 5,
+  });
+
+  final List<Widget> primary;
+  final List<Widget> secondary;
+  final int primaryFlex;
+  final int secondaryFlex;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, c) {
+        final wide = c.maxWidth >= PusulaSpace.wideBreakpoint - 96;
+        if (!wide || secondary.isEmpty) {
+          final list = ListView(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+            children: [...primary, ...secondary],
+          );
+          if (!wide) return list;
+          return Center(
+            child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 860), child: list),
+          );
+        }
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(28, 8, 28, 40),
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: PusulaSpace.maxContentWidth),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    flex: primaryFlex,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: primary),
+                  ),
+                  const SizedBox(width: 24),
+                  Expanded(
+                    flex: secondaryFlex,
+                    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: secondary),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Dikey boşluk kısayolu.
+class Gap extends StatelessWidget {
+  const Gap(this.size, {super.key});
+  final double size;
+  @override
+  Widget build(BuildContext context) => SizedBox(height: size, width: size);
+}
+
+/// Bölüm başlığı: başlık + isteğe bağlı açıklama ve sağda eylem.
+class SectionTitle extends StatelessWidget {
+  const SectionTitle(this.title, {super.key, this.subtitle, this.trailing});
+
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Semantics(
+                  header: true,
+                  child: Text(
+                    title,
+                    style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800, letterSpacing: -0.2),
+                  ),
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 2),
+                  Text(subtitle!, style: TextStyle(fontSize: 12, color: p.textDim, height: 1.3)),
+                ],
+              ],
+            ),
+          ),
+          ?trailing,
+        ],
+      ),
+    );
+  }
+}
+
+/// Küçük renkli etiket.
+class Tag extends StatelessWidget {
+  const Tag(this.label, {super.key, required this.color, this.icon, this.filled = false});
+
+  final String label;
+  final Color color;
+  final IconData? icon;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = filled ? Colors.white : color;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: filled ? color : color.withValues(alpha: 0.13),
+        borderRadius: BorderRadius.circular(7),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (icon != null) ...[
+            Icon(icon, size: 12, color: fg),
+            const SizedBox(width: 4),
+          ],
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: fg, letterSpacing: 0.2),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Piyasa etiketi: BIST mor, kripto mercan (renk + metin birlikte).
+class MarketTag extends StatelessWidget {
+  const MarketTag(this.market, {super.key});
+  final Market market;
+
+  static Color colorOf(BuildContext context, Market m) {
+    final p = PusulaPalette.of(context);
+    return m == Market.bist ? p.accent : p.coral;
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      Tag(market == Market.bist ? 'BIST' : 'KRİPTO', color: colorOf(context, market));
+}
+
+/// Etiket + değer çifti (küçük ölçü kutusu).
+class StatTile extends StatelessWidget {
+  const StatTile({
+    super.key,
+    required this.label,
+    required this.value,
+    this.hint,
+    this.valueColor,
+    this.big = false,
+  });
+
+  final String label;
+  final String value;
+  final String? hint;
+  final Color? valueColor;
+  final bool big;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(label, style: TextStyle(fontSize: 11, color: p.textDim, fontWeight: FontWeight.w600)),
+        const SizedBox(height: 2),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: big ? 20 : 14,
+            fontWeight: FontWeight.w800,
+            color: valueColor ?? p.text,
+            letterSpacing: big ? -0.4 : 0,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
+        if (hint != null) Text(hint!, style: TextStyle(fontSize: 11, color: p.textDim)),
+      ],
+    );
+  }
+}
+
+/// 0–100 güven skoru halkası. Renk tek başına anlam taşımaz: sayı her zaman ortada yazar.
+class ConfidenceRing extends StatelessWidget {
+  const ConfidenceRing({super.key, required this.score, this.size = 52});
+
+  final int score;
+  final double size;
+
+  static Color colorFor(PusulaPalette p, int score) =>
+      score >= 75 ? p.profit : (score >= 60 ? p.accent : p.coral);
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    final color = colorFor(p, score);
+    return Semantics(
+      label: 'Güven skoru $score / 100',
+      child: SizedBox(
+        width: size,
+        height: size,
+        child: CustomPaint(
+          painter: _RingPainter(fraction: score / 100.0, color: color, track: p.subtle),
+          child: Center(
+            child: ExcludeSemantics(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$score',
+                    style: TextStyle(fontSize: size * 0.32, fontWeight: FontWeight.w800, height: 1.0, color: p.text),
+                  ),
+                  Text('güven', style: TextStyle(fontSize: size * 0.17, color: p.textDim, height: 1.1)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RingPainter extends CustomPainter {
+  _RingPainter({required this.fraction, required this.color, required this.track});
+  final double fraction;
+  final Color color;
+  final Color track;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final stroke = size.width * 0.1;
+    final rect = Offset.zero & size;
+    final arcRect = rect.deflate(stroke / 2);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = stroke
+      ..strokeCap = StrokeCap.round
+      ..color = track;
+    canvas.drawArc(arcRect, 0, 2 * math.pi, false, paint);
+    paint.color = color;
+    canvas.drawArc(arcRect, -math.pi / 2, 2 * math.pi * fraction.clamp(0.0, 1.0), false, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RingPainter old) =>
+      old.fraction != fraction || old.color != color || old.track != track;
+}
+
+/// Stop → giriş → 1R → 2R fiyat merdiveni. Riski (kırmızı) ve ödülü (yeşil) aynı ölçekte gösterir;
+/// varsa güncel fiyatı işaretler. Değerler altta metin olarak da yazılır (yalnız renge dayanmaz).
+class PriceLadder extends StatelessWidget {
+  const PriceLadder({
+    super.key,
+    required this.market,
+    required this.stop,
+    required this.entry,
+    required this.target1,
+    required this.target2,
+    this.current,
+  });
+
+  final Market market;
+  final double stop;
+  final double entry;
+  final double target1;
+  final double target2;
+  final double? current;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    Widget label(String title, double value, Color color, CrossAxisAlignment align) => Column(
+          crossAxisAlignment: align,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(title, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color)),
+            Text(
+              Fmt.price(value, market),
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: p.text,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        );
+
+    return Semantics(
+      label: 'Stop ${Fmt.price(stop, market)}, giriş ${Fmt.price(entry, market)}, '
+          'birinci hedef ${Fmt.price(target1, market)}, ana hedef ${Fmt.price(target2, market)}',
+      child: ExcludeSemantics(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              height: 18,
+              width: double.infinity,
+              child: CustomPaint(
+                painter: _LadderPainter(
+                  stop: stop,
+                  entry: entry,
+                  target1: target1,
+                  target2: target2,
+                  current: current,
+                  loss: p.loss,
+                  profit: p.profit,
+                  marker: p.text,
+                  card: p.card,
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                label('STOP', stop, p.loss, CrossAxisAlignment.start),
+                label('GİRİŞ', entry, p.textDim, CrossAxisAlignment.center),
+                label('HEDEF 1', target1, p.profit, CrossAxisAlignment.center),
+                label('HEDEF 2', target2, p.profit, CrossAxisAlignment.end),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LadderPainter extends CustomPainter {
+  _LadderPainter({
+    required this.stop,
+    required this.entry,
+    required this.target1,
+    required this.target2,
+    required this.current,
+    required this.loss,
+    required this.profit,
+    required this.marker,
+    required this.card,
+  });
+
+  final double stop;
+  final double entry;
+  final double target1;
+  final double target2;
+  final double? current;
+  final Color loss;
+  final Color profit;
+  final Color marker;
+  final Color card;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final span = target2 - stop;
+    if (span <= 0 || size.width <= 0) return;
+    double x(double price) => ((price - stop) / span).clamp(0.0, 1.0) * size.width;
+
+    final cy = size.height / 2;
+    const h = 8.0;
+    final xe = x(entry);
+    final r = const Radius.circular(4);
+
+    canvas.drawRRect(
+      RRect.fromLTRBAndCorners(0, cy - h / 2, xe, cy + h / 2, topLeft: r, bottomLeft: r),
+      Paint()..color = loss.withValues(alpha: 0.75),
+    );
+    canvas.drawRRect(
+      RRect.fromLTRBAndCorners(xe, cy - h / 2, size.width, cy + h / 2, topRight: r, bottomRight: r),
+      Paint()..color = profit.withValues(alpha: 0.75),
+    );
+
+    // Giriş ve 1. hedef çentikleri
+    final tick = Paint()
+      ..color = card
+      ..strokeWidth = 2;
+    canvas.drawLine(Offset(xe, cy - h / 2), Offset(xe, cy + h / 2), tick);
+    final x1 = x(target1);
+    canvas.drawLine(Offset(x1, cy - h / 2), Offset(x1, cy + h / 2), tick);
+
+    // Güncel fiyat işareti
+    final cur = current;
+    if (cur != null && cur > 0) {
+      final xc = x(cur);
+      canvas.drawCircle(Offset(xc, cy), 6.5, Paint()..color = card);
+      canvas.drawCircle(Offset(xc, cy), 4.5, Paint()..color = marker);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LadderPainter old) =>
+      old.stop != stop ||
+      old.entry != entry ||
+      old.target1 != target1 ||
+      old.target2 != target2 ||
+      old.current != current ||
+      old.loss != loss ||
+      old.profit != profit ||
+      old.marker != marker;
+}
+
+/// Yatay doluluk çubuğu (ör. açık risk / sınır). Animasyonsuz çizilir.
+class MeterBar extends StatelessWidget {
+  const MeterBar({super.key, required this.fraction, required this.color, this.height = 6});
+
+  final double fraction;
+  final Color color;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(height),
+      child: SizedBox(
+        height: height,
+        child: Stack(
+          children: [
+            Positioned.fill(child: ColoredBox(color: p.subtle)),
+            FractionallySizedBox(
+              widthFactor: fraction.clamp(0.0, 1.0),
+              child: ColoredBox(color: color, child: const SizedBox.expand()),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Güven skorunun altı bileşenini (ve varsa kalite düzeltmesini) çubuklarla gösterir.
+class ConfidenceBars extends StatelessWidget {
+  const ConfidenceBars({super.key, required this.breakdown});
+
+  final ConfidenceBreakdown breakdown;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    final rows = <(String, int, int)>[
+      ('Kurulum çakışması', breakdown.setupConfluence, 25),
+      ('Hacim teyidi', breakdown.volumeConfirmation, 15),
+      ('Piyasa rejimi', breakdown.regimeAlignment, 15),
+      ('Üst dilim uyumu', breakdown.higherTimeframeAlignment, 15),
+      ('Monte Carlo', breakdown.monteCarloScore, 15),
+      ('Ödül / Risk (net)', breakdown.rewardRiskScore, 15),
+    ];
+    return Column(
+      children: [
+        for (final r in rows)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 7),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 124,
+                  child: Text(r.$1, style: TextStyle(fontSize: 12, color: p.textDim)),
+                ),
+                Expanded(child: MeterBar(fraction: r.$3 == 0 ? 0 : r.$2 / r.$3, color: p.accent)),
+                SizedBox(
+                  width: 50,
+                  child: Text(
+                    '+${r.$2}/${r.$3}',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        if (breakdown.qualityAdjustment != 0)
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Kalite düzeltmesi (veri yaşı, maliyet, aşırı ısınma)',
+                  style: TextStyle(fontSize: 12, color: p.textDim),
+                ),
+              ),
+              Text(
+                '${breakdown.qualityAdjustment}',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: p.loss),
+              ),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+/// Boş durum kutusu: neden boş olduğunu ve ne olacağını söyler.
+class EmptyNote extends StatelessWidget {
+  const EmptyNote({super.key, required this.icon, required this.title, this.body, this.action});
+
+  final IconData icon;
+  final String title;
+  final String? body;
+  final Widget? action;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(color: p.subtle, borderRadius: BorderRadius.circular(11)),
+              child: Icon(icon, size: 20, color: p.textDim),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800)),
+                  if (body != null) ...[
+                    const SizedBox(height: 4),
+                    Text(body!, style: TextStyle(fontSize: 12.5, color: p.textDim, height: 1.35)),
+                  ],
+                  if (action != null) ...[const SizedBox(height: 10), action!],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Piyasa rejimi etiketi (Boğa / Yatay / Ayı) — ikon + metin.
+class RegimeChip extends StatelessWidget {
+  const RegimeChip({super.key, required this.marketLabel, required this.regime});
+
+  final String marketLabel;
+  final MarketRegime regime;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    final (Color color, IconData icon) = switch (regime) {
+      MarketRegime.bull => (p.profit, Icons.trending_up),
+      MarketRegime.sideways => (p.neutral, Icons.trending_flat),
+      MarketRegime.bear => (p.loss, Icons.trending_down),
+    };
+    return Tag('$marketLabel: ${regime.label}', color: color, icon: icon);
+  }
+}
+
+/// 100 bazlı performans eğrisi için sade çizgi grafik (ızgara ve animasyon yok).
+class Sparkline extends StatelessWidget {
+  const Sparkline({super.key, required this.values, this.height = 72});
+
+  final List<double> values;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    final up = values.isEmpty || values.last >= 100.0;
+    return SizedBox(
+      height: height,
+      width: double.infinity,
+      child: CustomPaint(
+        painter: _SparkPainter(values: values, line: up ? p.profit : p.loss, base: p.border),
+      ),
+    );
+  }
+}
+
+class _SparkPainter extends CustomPainter {
+  _SparkPainter({required this.values, required this.line, required this.base});
+  final List<double> values;
+  final Color line;
+  final Color base;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Eğri her zaman 100 tabanından başlar.
+    final pts = [100.0, ...values];
+    var lo = pts.reduce(math.min);
+    var hi = pts.reduce(math.max);
+    if (hi - lo < 1.0) {
+      hi += 0.5;
+      lo -= 0.5;
+    }
+    double y(double v) => size.height - 4 - ((v - lo) / (hi - lo)) * (size.height - 8);
+    double x(int i) => pts.length == 1 ? 0 : i / (pts.length - 1) * size.width;
+
+    final dash = Paint()
+      ..color = base
+      ..strokeWidth = 1;
+    final yBase = y(100.0);
+    for (var dx = 0.0; dx < size.width; dx += 8) {
+      canvas.drawLine(Offset(dx, yBase), Offset(math.min(dx + 4, size.width), yBase), dash);
+    }
+
+    final path = Path()..moveTo(x(0), y(pts[0]));
+    for (var i = 1; i < pts.length; i++) {
+      path.lineTo(x(i), y(pts[i]));
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..color = line
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2
+        ..strokeJoin = StrokeJoin.round
+        ..strokeCap = StrokeCap.round,
+    );
+    canvas.drawCircle(Offset(x(pts.length - 1), y(pts.last)), 3.5, Paint()..color = line);
+  }
+
+  @override
+  bool shouldRepaint(covariant _SparkPainter old) => old.values != values || old.line != line;
+}
+
+/// Kart içi başlık satırı: ikon rozeti + başlık + isteğe bağlı sağ öğe.
+class CardHeader extends StatelessWidget {
+  const CardHeader({super.key, required this.icon, required this.title, this.trailing, this.color});
+
+  final IconData icon;
+  final String title;
+  final Widget? trailing;
+  final Color? color;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    final c = color ?? p.accent;
+    return Row(
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(color: c.withValues(alpha: 0.13), borderRadius: BorderRadius.circular(9)),
+          child: Icon(icon, size: 17, color: c),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, letterSpacing: -0.1)),
+        ),
+        ?trailing,
+      ],
+    );
+  }
+}

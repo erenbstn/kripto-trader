@@ -136,3 +136,110 @@ class StubProvider implements MarketDataProvider {
     return behavior!(instrument, interval, limit, now);
   }
 }
+
+/// Sağlıklı yükseliş trendi + son kapanmış mumda 20-bar zirvesi üzerine hacimli kırılım üreten
+/// belirlenimci sentetik seri. Son mum [lastBarClose] anında kapanır.
+///
+/// [wickPct] > 0 verilirse kırılım mumuna üst fitil eklenir (fitil reddi senaryosu);
+/// [lastVolumeFactor] kırılım mumunun hacim çarpanıdır.
+List<Candle> bullBreakoutBars({
+  required DateTime lastBarClose,
+  required BarInterval interval,
+  int count = 120,
+  double startPrice = 100.0,
+  double wickPct = 0.2,
+  double lastVolumeFactor = 2.5,
+}) {
+  final t0 = lastBarClose.toUtc().millisecondsSinceEpoch - count * interval.ms;
+  final bars = <Candle>[];
+  var p = startPrice;
+  for (var i = 0; i < count - 1; i++) {
+    final double step;
+    if (i >= count - 8) {
+      step = i.isEven ? -0.22 : 0.15;
+    } else {
+      step = (i % 3 == 0) ? -0.35 : 0.32;
+    }
+    final c = p * (1.0 + step / 100.0);
+    bars.add(Candle(
+      openTimeMs: t0 + i * interval.ms,
+      open: p,
+      high: (p > c ? p : c) * 1.003,
+      low: (p < c ? p : c) * 0.998,
+      close: c,
+      volume: 1000,
+      quoteVolume: 1000 * c,
+      takerBuyQuote: 620 * c,
+    ));
+    p = c;
+  }
+  var hi20 = 0.0;
+  for (var i = count - 21; i < count - 1; i++) {
+    if (bars[i].high > hi20) hi20 = bars[i].high;
+  }
+  final cLast = hi20 * 1.006;
+  bars.add(Candle(
+    openTimeMs: t0 + (count - 1) * interval.ms,
+    open: p,
+    high: cLast * (1.0 + wickPct / 100.0),
+    low: p * 0.999,
+    close: cLast,
+    volume: 1000 * lastVolumeFactor,
+    quoteVolume: 1000 * lastVolumeFactor * cLast,
+    takerBuyQuote: 640 * lastVolumeFactor * cLast,
+  ));
+  return bars;
+}
+
+/// Hiçbir kurulumu tetiklemeyen, dar bantta salınan yatay seri (fırsat yok senaryosu).
+List<Candle> flatBars({
+  required DateTime lastBarClose,
+  required BarInterval interval,
+  int count = 120,
+  double price = 100.0,
+}) {
+  final t0 = lastBarClose.toUtc().millisecondsSinceEpoch - count * interval.ms;
+  final bars = <Candle>[];
+  var p = price;
+  for (var i = 0; i < count; i++) {
+    final c = i.isEven ? price * 1.001 : price * 0.999;
+    bars.add(Candle(
+      openTimeMs: t0 + i * interval.ms,
+      open: p,
+      high: (p > c ? p : c) * 1.001,
+      low: (p < c ? p : c) * 0.999,
+      close: c,
+      volume: 1000,
+      quoteVolume: 1000 * c,
+      takerBuyQuote: 500 * c,
+    ));
+    p = c;
+  }
+  return bars;
+}
+
+/// Sürekli düşen seri (Ayı rejimi senaryosu).
+List<Candle> downtrendBars({
+  required DateTime lastBarClose,
+  required BarInterval interval,
+  int count = 220,
+  double startPrice = 200.0,
+}) {
+  final t0 = lastBarClose.toUtc().millisecondsSinceEpoch - count * interval.ms;
+  final bars = <Candle>[];
+  var p = startPrice;
+  for (var i = 0; i < count; i++) {
+    final c = p * 0.996;
+    bars.add(Candle(
+      openTimeMs: t0 + i * interval.ms,
+      open: p,
+      high: p * 1.001,
+      low: c * 0.998,
+      close: c,
+      volume: 1000,
+      quoteVolume: 1000 * c,
+    ));
+    p = c;
+  }
+  return bars;
+}

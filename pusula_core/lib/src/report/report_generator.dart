@@ -30,13 +30,26 @@ class WeeklyReportGenerator {
     Map<Instrument, double> currentPrices = const {},
     Duration lookbackWindow = const Duration(days: 7),
     bool saveProposalsToJournal = true,
+    String? reportId,
+    DateTime? reviewFrom,
+    DateTime? reviewUntil,
   }) async {
     final now = _clock().toUtc();
     final weekStart = now.subtract(lookbackWindow);
 
     final pastSignals = await journalStore.allSignals(since: weekStart, until: now);
-    final pastProposals = [for (final s in pastSignals) if (s.isWeeklyProposal) s];
     final pastShortTerm = [for (final s in pastSignals) if (!s.isWeeklyProposal) s];
+
+    // Geçen hafta değerlendirmesi: [reviewFrom, reviewUntil) verilmişse yalnızca o takvim haftasında
+    // ÖNERİLMİŞ kayıtlar değerlendirilir (bu haftanın yeni önerileri kendi karnesine karışmaz).
+    final List<SignalRecord> pastProposals;
+    if (reviewFrom != null) {
+      final until = (reviewUntil ?? now).toUtc();
+      final inWindow = await journalStore.allSignals(since: reviewFrom, weeklyProposalsOnly: true);
+      pastProposals = [for (final s in inWindow) if (s.createdAt.isBefore(until)) s];
+    } else {
+      pastProposals = [for (final s in pastSignals) if (s.isWeeklyProposal) s];
+    }
 
     // 1. ÖNCE GEÇEN HAFTA RAPORU
     final lastWeek = _buildLastWeekReview(pastProposals, currentPrices);
@@ -65,9 +78,10 @@ class WeeklyReportGenerator {
       }
     }
 
-    final reportId = 'weekly_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
+    final effId = reportId ??
+        'weekly_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
     final report = WeeklyReport(
-      id: reportId,
+      id: effId,
       weekStart: weekStart,
       weekEnd: now,
       generatedAt: now,

@@ -15,6 +15,8 @@ import android.os.IBinder
 import android.os.PowerManager
 import android.provider.Settings
 import androidx.core.app.NotificationCompat
+import androidx.core.content.FileProvider
+import androidx.core.content.pm.PackageInfoCompat
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
@@ -23,13 +25,86 @@ import androidx.work.WorkerParameters
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 class MainActivity : FlutterActivity() {
     private val channelName = "app.pusula/background"
+    private val updateChannelName = "app.pusula/update"
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, updateChannelName)
+            .setMethodCallHandler { call, result ->
+                when (call.method) {
+                    "getAppVersion" -> {
+                        try {
+                            val pInfo = packageManager.getPackageInfo(packageName, 0)
+                            val versionCode = PackageInfoCompat.getLongVersionCode(pInfo)
+                            result.success(
+                                mapOf(
+                                    "versionName" to (pInfo.versionName ?: "1.0.0"),
+                                    "versionCode" to versionCode.toInt()
+                                )
+                            )
+                        } catch (e: Exception) {
+                            result.error("VERSION_ERROR", e.message, null)
+                        }
+                    }
+                    "getUpdateCacheDir" -> {
+                        val dir = File(cacheDir, "updates").apply { mkdirs() }
+                        result.success(dir.absolutePath)
+                    }
+                    "canRequestPackageInstalls" -> {
+                        val allowed = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            packageManager.canRequestPackageInstalls()
+                        } else {
+                            true
+                        }
+                        result.success(allowed)
+                    }
+                    "openUnknownSourcesSettings" -> {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                                data = Uri.parse("package:$packageName")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                        }
+                        result.success(true)
+                    }
+                    "installApk" -> {
+                        val path = call.argument<String>("path")
+                        if (path.isNullOrBlank()) {
+                            result.error("INVALID_PATH", "APK yolu boş.", null)
+                            return@setMethodCallHandler
+                        }
+                        try {
+                            val updatesRoot = File(cacheDir, "updates").canonicalFile
+                            val apkFile = File(path).canonicalFile
+                            if (!apkFile.path.startsWith(updatesRoot.path) || !apkFile.exists() || !apkFile.name.endsWith(".apk")) {
+                                result.error("INVALID_FILE", "APK dosyası doğrulanamadı.", null)
+                                return@setMethodCallHandler
+                            }
+                            val uri = FileProvider.getUriForFile(
+                                applicationContext,
+                                "${packageName}.fileprovider",
+                                apkFile
+                            )
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(uri, "application/vnd.android.package-archive")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivity(intent)
+                            result.success(true)
+                        } catch (e: Exception) {
+                            result.error("INSTALL_ERROR", e.message, null)
+                        }
+                    }
+                    else -> result.notImplemented()
+                }
+            }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
                 when (call.method) {

@@ -7,6 +7,13 @@ import '../model/market.dart';
 import 'indicators.dart';
 import 'regime.dart';
 
+/// Etkin strateji sürümü.
+///
+/// 2.1.0 (K9): veri tazeliği, kurulum kalitesi ve işlem maliyeti süzgeçleri; rejime duyarlı güven
+/// eşiği; boşluklu stop muhasebesi. Küçük sürüm artışları (2.2.0, ...) otomatik optimizasyona
+/// ayrılmıştır ve 30 kapanmış sinyal kuralına tabidir.
+const String kStrategyVersion = '2.1.0';
+
 /// 6 teknik kurulum türü.
 enum SetupType {
   orb('orb', 'Açılış Aralığı Kırılımı (ORB)', isBreakout: true),
@@ -89,7 +96,7 @@ class SetupDetection {
 /// 6 kurulumu kapanmış mumlar üzerinde tarayan sınıf.
 ///
 /// Kural:
-/// - Kripto: `5m` veya `1h` dilimlerinde çalışır.
+/// - Kripto: `5m`, `1h` (kısa vade) veya `4h` (haftalık salınım) dilimlerinde çalışır.
 /// - BIST: yalnızca `1h` veya `1d` dilimlerinde çalışır (`5m` veya `15m` scalp desteklenmez).
 /// - Kapanmamış (`forming`) mum kesinlikle kullanılmaz.
 /// - Ayı (`MarketRegime.bear`) rejiminde kırılım kurulumları (`isBreakout == true`) süzülür.
@@ -103,7 +110,8 @@ class SetupScanner {
     if (market == Market.bist) {
       return interval == BarInterval.h1 || interval == BarInterval.d1;
     }
-    return interval == BarInterval.m5 || interval == BarInterval.h1;
+    // Kripto: 5 dk / 1 saat kısa vade, 4 saat haftalık salınım önerileri için.
+    return interval == BarInterval.m5 || interval == BarInterval.h1 || interval == BarInterval.h4;
   }
 
   /// Kripto veya BIST için seans açılış aralığını (ORB) hesaplar.

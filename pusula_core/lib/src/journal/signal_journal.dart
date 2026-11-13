@@ -364,21 +364,30 @@ class SignalOutcomeTracker {
       if (bar.low <= cur.currentStop) {
         final prevStatus = cur.status;
         final wasTarget1 = prevStatus == SignalStatus.target1;
-        final exitP = cur.currentStop;
-        // Eğer hedef1'e ulaşıldıktan sonra başabaş stop olduysa:
-        // Pozisyonun ilk yarısı +1R'de realize edilmiş, kalan yarısı 0R'de kapanmış kabul edilir (+0.5R).
+        // Gerçek piyasa koşulu: mum stop seviyesinin ALTINDA açıldıysa (açılış boşluğu / gece iğnesi)
+        // emir stop fiyatından değil açılış fiyatından gerçekleşir; kayıp -1R'den büyük olabilir.
+        final gapped = bar.open < cur.currentStop;
+        final exitP = gapped ? bar.open : cur.currentStop;
         final double rMult;
         final double pct;
         final String reason;
         if (wasTarget1) {
+          // Hedef 1 sonrası: pozisyonun ilk yarısı +1R'de realize edildi, kalan yarı çıkış fiyatından kapanır.
+          final t1R = (cur.target1 - cur.entryPrice) / risk;
+          final restR = (exitP - cur.entryPrice) / risk;
           final t1Pct = ((cur.target1 - cur.entryPrice) / cur.entryPrice) * 100.0;
-          rMult = double.parse((((cur.target1 - cur.entryPrice) / risk) * 0.5).toStringAsFixed(2));
-          pct = double.parse((t1Pct * 0.5).toStringAsFixed(2));
-          reason = 'Hedef 1 sonrası başabaş stop (${exitP.toStringAsFixed(2)})';
+          final restPct = ((exitP - cur.entryPrice) / cur.entryPrice) * 100.0;
+          rMult = double.parse((t1R * 0.5 + restR * 0.5).toStringAsFixed(2));
+          pct = double.parse((t1Pct * 0.5 + restPct * 0.5).toStringAsFixed(2));
+          reason = gapped
+              ? 'Hedef 1 sonrası boşlukla başabaş altında açıldı (${exitP.toStringAsFixed(2)})'
+              : 'Hedef 1 sonrası başabaş stop (${exitP.toStringAsFixed(2)})';
         } else {
           rMult = double.parse(((exitP - cur.entryPrice) / risk).toStringAsFixed(2));
           pct = double.parse((((exitP - cur.entryPrice) / cur.entryPrice) * 100.0).toStringAsFixed(2));
-          reason = 'Stop seviyesine değdi (${exitP.toStringAsFixed(2)})';
+          reason = gapped
+              ? 'Boşlukla stop altında açıldı; açılış fiyatından kapandı (${exitP.toStringAsFixed(2)})'
+              : 'Stop seviyesine değdi (${exitP.toStringAsFixed(2)})';
         }
 
         cur = cur.copyWith(

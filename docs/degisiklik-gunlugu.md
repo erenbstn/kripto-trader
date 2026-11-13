@@ -2,6 +2,31 @@
 
 Uygulama ve strateji sürümleri burada tutulur. Her kayıt: ne değişti, neden, nasıl geri alınır.
 
+## pusula_app 1.1.1 — 2026-11-14 (GitHub Releases Uygulama İçi APK Güncelleyici ve Otomatik Derleme)
+
+**Eklendi ve Güncellendi** (`pusula_app/lib/src/update/`, `.github/workflows/release-apk.yml`, `araclar/keystore-olustur.ps1`, `araclar/surum-yayinla.ps1`)
+- **Uygulama İçi Güncelleyici (`AppUpdateService`, `AppVersion`, `AppUpdateState`):** GitHub Releases (`releases/latest`) üzerinden yeni `versionCode` / SemVer kontrolü yapar, yalnızca güvenilir HTTPS GitHub bağlantılarından (`.apk`) indirir ve Android `FileProvider` + `REQUEST_INSTALL_PACKAGES` kanalı (`app.pusula/update`) ile verileri koruyarak sistem kurulum ekranını açar.
+- **Arayüz Entegrasyonu (`OzetScreen`, `AyarScreen`, `AppSettings`):** GitHub deposu (`kullanici/depo`) ayarı, açılışta sessiz kontrol anahtarı, ilerleme çubuklu indirme kartı ve ana sayfada güncelleme uyarısı eklendi (`app_updater_test.dart` birim testleri dahil).
+- **Sabit Release İmzalama ve CI/CD:** `build.gradle.kts` `key.properties` desteğine kavuşturuldu; `araclar/keystore-olustur.ps1`, `araclar/surum-yayinla.ps1` ve `.github/workflows/release-apk.yml` (etiket itildiğinde testi geçirip release APK yayınlayan GitHub Actions akışı) eklendi.
+
+**Geri alma:** `git revert` ile önceki commit'e dönülebilir.
+
+## pusula_app 1.1.0 & pusula_core 0.5.0 — 2026-11-13 (K9 Analiz Motoru İyileştirmeleri ve K10 Mobil/Web Arayüz Yenilemesi)
+
+**Eklendi ve Güncellendi** (`pusula_core/lib/src/analysis/`, `pusula_app/lib/`)
+- **Analiz Motoru İyileştirmeleri (`K9`, Strateji `v2.1.0`):**
+  - `TradingCosts` (`trading_costs.dart`): kripto (%0,20) ve BIST (%0,30) gidiş-dönüş işlem maliyeti tahminleriyle net Ö/R hesabı ve maliyet/risk oranı süzgeci eklendi.
+  - `SignalEngine` (`signal_engine.dart`) ve `ConfidenceScorer` (`confidence_score.dart`): veri tazeliği süzgeci (`maxSignalBarAge`), kovalama (`> 1.5 ATR`), kırılım fitil reddi ve düşük hacim süzgeçleri (`FunnelStage.quality`), rejime duyarlı güven eşiği (Boğa 50, Yatay 54, Ayı 58) ve kalite düzeltmesi eklendi.
+  - `MarketScanner` (`market_scanner.dart`) & `ScanRunner` (`scan_runner.dart`): tüm BIST + sabit 10 kripto evrenini tarayan, stop sonrası 6 mum soğuma ve piyasa başına açık sinyal sınırı (Kripto 4, BIST 5) uygulayan, elenen adayları aşama ve gerekçesiyle (`ScanOutcome.nearMisses`) döndüren tarama hunisi eklendi. Birim testleri (`pusula_core/test/market_scanner_test.dart`) eklendi.
+- **Gerçek Uygulama Canlı Kipli Başlangıç (`main.dart`, `pusula_controller.dart`):**
+  - `demoSeedProvider` testlerde ve önizlemede varsayılan `true` bırakılırken gerçek uygulamada (`main.dart`) `false` yapıldı; örnek sinyaller asla gerçek öneri olarak gösterilmez, eşiği geçen fırsat yoksa portföy dürüstçe %100 nakit görünür.
+- **Mobil & Web Tasarım Yenilemesi (`K10`):**
+  - `gunduz_theme.dart` & `widgets/common.dart`: `PusulaPalette` (açık GÜNDÜZ + koyu tema), `PusulaSpace` (`wideBreakpoint = 900`, `maxContentWidth = 1240`), duyarlı iki sütunlu `PageBody`, `ConfidenceRing`, `PriceLadder`, `ConfidenceBars`, `EmptyNote`, `CardHeader` eklendi.
+  - `signal_card.dart`, `recommendation_card.dart`, `ozet_screen.dart`, `oneri_screen.dart`, `sinyal_screen.dart`, `ayar_screen.dart`: yeni kart hiyerarşisi, karar kartı, tarama hunisi özeti, elenen adaylar kartı ve `PageBody` yerleşimi uygulandı.
+  - `main.dart`: Web/geniş ekranlarda (`>= 900 px`) sol `NavigationRail`, dar/mobil ekranlarda alt `NavigationBar` ve `AppBar` tarama ilerleme çubuğu eklendi.
+
+**Geri alma:** `git revert` ile önceki commit'e dönülebilir.
+
 ## pusula_app 1.0.1 & pusula_core 0.4.1 — 2026-11-10 (Canlı Fiyat Bağlantısı ve İş Yatırım Sıralama Düzeltmesi)
 
 **Düzeltildi ve Eklendi** (`pusula_app/lib/src/state/pusula_controller.dart`, `pusula_core/lib/src/data/isyatirim_provider.dart`, `araclar/cors_proxy.dart`)

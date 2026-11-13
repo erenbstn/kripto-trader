@@ -134,10 +134,10 @@ class StrategyVersionRecord {
   final Map<SetupType, StrategyParameters> byStrategy;
 
   factory StrategyVersionRecord.baseline({DateTime? createdAt}) => StrategyVersionRecord(
-        version: '2.0.0',
+        version: kStrategyVersion,
         parentVersion: null,
         createdAt: (createdAt ?? DateTime.utc(2026, 4, 1)).toUtc(),
-        rationale: 'Strateji 2.0.0 başlangıç parametreleri (K7).',
+        rationale: 'Strateji $kStrategyVersion taban parametreleri (K7 + K9 huni iyileştirmeleri).',
         byStrategy: {
           for (final s in SetupType.values) s: const StrategyParameters(),
         },
@@ -409,7 +409,7 @@ class StrategyOptimizer {
 
   static String _bumpMinorVersion(String version) {
     final parts = version.split('.');
-    if (parts.length != 3) return '2.1.0';
+    if (parts.length != 3) return '2.2.0';
     final major = int.tryParse(parts[0]) ?? 2;
     final minor = (int.tryParse(parts[1]) ?? 0) + 1;
     return '$major.$minor.0';

@@ -1,4 +1,4 @@
-﻿# Geliştirme ortamı (PowerShell). Kullanım:  . .\araclar\ortam.ps1
+# Geliştirme ortamı (PowerShell). Kullanım:  . .\araclar\ortam.ps1
 # Sistem ayarlarını değiştirmez; yalnızca bu oturum için geçerlidir.
 $env:JAVA_HOME = "C:\Users\eren_\dev\jdk-17.0.21+9"
 $env:ANDROID_HOME = "C:\Users\eren_\dev\android-sdk"

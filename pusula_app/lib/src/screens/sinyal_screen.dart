@@ -4,9 +4,15 @@ import 'package:pusula_core/pusula_core.dart';
 
 import '../state/pusula_controller.dart';
 import '../theme/gunduz_theme.dart';
+import '../widgets/common.dart';
+import '../widgets/signal_card.dart';
+import 'oneri_screen.dart' show RejectedCandidatesCard;
 
-/// Sekme 3 — Sinyal ekranı (DEVIR.md Faz 5.3).
-/// Kısa vade haftalık raporu (Kripto ve BIST ayrı) + canlı sinyal akışı.
+enum _StatusFilter { all, open, closed }
+
+/// Sekme 3 — Sinyal.
+///
+/// Kısa vade haftalık karnesi (kripto ve BIST ayrı), elenen adaylar ve tüm sinyal günlüğü.
 class SinyalScreen extends ConsumerStatefulWidget {
   const SinyalScreen({super.key});
 
@@ -15,60 +21,96 @@ class SinyalScreen extends ConsumerStatefulWidget {
 }
 
 class _SinyalScreenState extends ConsumerState<SinyalScreen> {
-  Market? _filter;
+  Market? _market;
+  _StatusFilter _status = _StatusFilter.all;
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pusulaControllerProvider);
     final shortTerm = state.currentReport.shortTermReport;
-    final signals = _filter == null
-        ? state.allSignals
-        : state.allSignals.where((s) => s.instrument.market == _filter).toList();
+    final scan = state.lastScan;
+    final misses = scan == null ? const <ScanCandidate>[] : [for (final c in scan.nearMisses) if (!c.weekly) c];
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-      children: [
+    final signals = [
+      for (final s in state.allSignals)
+        if ((_market == null || s.instrument.market == _market) &&
+            (_status == _StatusFilter.all ||
+                (_status == _StatusFilter.open && s.isActive) ||
+                (_status == _StatusFilter.closed && s.isClosed)))
+          s,
+    ];
+
+    return PageBody(
+      primaryFlex: 5,
+      secondaryFlex: 6,
+      primary: [
         const DisclaimerBanner(),
-        const SizedBox(height: 14),
-        const Text(
-          'Kısa Vade Haftalık Raporu (BIST ve Kripto Ayrı)',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+        const SectionTitle(
+          'Kısa vade haftalık raporu',
+          subtitle: 'Son 7 günde üretilen kısa vade sinyallerinin gerçekleşen sonuçları.',
         ),
-        const SizedBox(height: 8),
         _MarketStatsCard(
           title: 'Kripto Kısa Vade Özeti',
-          accent: GunduzColors.coral,
+          market: Market.crypto,
           stats: shortTerm.crypto,
         ),
-        const SizedBox(height: 10),
+        const Gap(10),
         _MarketStatsCard(
           title: 'Borsa İstanbul Kısa Vade Özeti',
-          accent: GunduzColors.accent,
+          market: Market.bist,
           stats: shortTerm.bist,
         ),
-        const SizedBox(height: 18),
-        const Text(
-          'Sinyal Günlüğü ve Canlı Akış',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
-        ),
-        const SizedBox(height: 8),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SegmentedButton<Market?>(
-            segments: const [
-              ButtonSegment<Market?>(value: null, label: Text('Tümü')),
-              ButtonSegment<Market?>(value: Market.bist, label: Text('BIST')),
-              ButtonSegment<Market?>(value: Market.crypto, label: Text('Kripto')),
-            ],
-            selected: {_filter},
-            onSelectionChanged: (sel) => setState(() => _filter = sel.first),
+        if (misses.isNotEmpty) ...[
+          const SectionTitle(
+            'Elenen kısa vade adayları',
+            subtitle: 'Kurulum bulundu, ancak bir süzgeç reddetti. Zorla sinyal üretilmez.',
           ),
-        ),
-        const SizedBox(height: 10),
-        for (final sig in signals) ...[
-          _SignalRecordCard(signal: sig),
-          const SizedBox(height: 10),
+          RejectedCandidatesCard(candidates: misses),
         ],
+      ],
+      secondary: [
+        SectionTitle('Sinyal günlüğü', subtitle: '${state.allSignals.length} kayıt · en yeni üstte'),
+        Wrap(
+          spacing: 10,
+          runSpacing: 8,
+          children: [
+            SegmentedButton<Market?>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment<Market?>(value: null, label: Text('Tümü')),
+                ButtonSegment<Market?>(value: Market.bist, label: Text('BIST')),
+                ButtonSegment<Market?>(value: Market.crypto, label: Text('Kripto')),
+              ],
+              selected: {_market},
+              onSelectionChanged: (sel) => setState(() => _market = sel.first),
+            ),
+            SegmentedButton<_StatusFilter>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: _StatusFilter.all, label: Text('Hepsi')),
+                ButtonSegment(value: _StatusFilter.open, label: Text('Açık')),
+                ButtonSegment(value: _StatusFilter.closed, label: Text('Kapanan')),
+              ],
+              selected: {_status},
+              onSelectionChanged: (sel) => setState(() => _status = sel.first),
+            ),
+          ],
+        ),
+        const Gap(12),
+        if (signals.isEmpty)
+          EmptyNote(
+            icon: Icons.inbox_outlined,
+            title: state.allSignals.isEmpty ? 'Günlük boş' : 'Bu süzgeçte kayıt yok',
+            body: state.allSignals.isEmpty
+                ? 'Pusula yalnızca hunideki tüm süzgeçleri geçen kurulumları kaydeder. '
+                    'Henüz onaylanan sinyal yok; bu da bir bilgidir.'
+                : 'Süzgeçleri değiştirerek diğer kayıtları görebilirsin.',
+          )
+        else
+          for (final sig in signals) ...[
+            SignalCard(signal: sig, currentPrice: state.priceOf(sig.instrument)),
+            const Gap(10),
+          ],
       ],
     );
   }
@@ -77,17 +119,20 @@ class _SinyalScreenState extends ConsumerState<SinyalScreen> {
 class _MarketStatsCard extends StatelessWidget {
   const _MarketStatsCard({
     required this.title,
-    required this.accent,
+    required this.market,
     required this.stats,
   });
 
   final String title;
-  final Color accent;
+  final Market market;
   final ShortTermMarketSummary stats;
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final p = PusulaPalette.of(context);
+    final accent = MarketTag.colorOf(context, market);
+    final hasClosed = stats.closedSignals > 0;
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(14),
@@ -97,156 +142,70 @@ class _MarketStatsCard extends StatelessWidget {
             Row(
               children: [
                 Container(
-                  width: 8,
-                  height: 18,
-                  decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
+                  width: 6,
+                  height: 20,
+                  decoration: BoxDecoration(color: accent, borderRadius: BorderRadius.circular(3)),
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    title,
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-                  ),
+                  child: Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800)),
                 ),
-                SignedMetricChip(value: stats.totalReturnPct, suffix: '% Getiri'),
+                if (hasClosed) SignedMetricChip(value: stats.totalReturnPct, suffix: '', prefix: '%', decimals: 2),
               ],
             ),
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 14,
-              runSpacing: 6,
-              children: [
-                Text('Toplam Sinyal: ${stats.totalSignals}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                Text('Açık: ${stats.openSignals}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                Text('Kapanan: ${stats.closedSignals}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
-                Text(
-                  'Kazanma Oranı: %${stats.winRatePct.toStringAsFixed(0)}',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                ),
-                Text(
-                  'Ortalama R: ${stats.avgR.toStringAsFixed(2).replaceAll('.', ',')}R',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-                ),
-              ],
-            ),
-            if (stats.bestSignalSummary != null) ...[
-              const SizedBox(height: 6),
+            const Gap(12),
+            if (!stats.hasData)
               Text(
-                'En İyi: ${stats.bestSignalSummary} · En Kötü: ${stats.worstSignalSummary ?? "-"}',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: isDark ? GunduzColors.darkTextSecondary : GunduzColors.textSecondary,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SignalRecordCard extends StatelessWidget {
-  const _SignalRecordCard({required this.signal});
-
-  final SignalRecord signal;
-
-  static String _statusLabel(SignalStatus s) {
-    switch (s) {
-      case SignalStatus.open:
-        return 'AÇIK';
-      case SignalStatus.target1:
-        return 'HEDEF 1 (Başabaş Korumalı)';
-      case SignalStatus.target2:
-        return 'HEDEF 2 (+2R Kapandı)';
-      case SignalStatus.stop:
-        return 'STOP (-1R Kapandı)';
-      case SignalStatus.expired:
-        return 'SÜRE DOLDU';
-      case SignalStatus.invalidated:
-        return 'GEÇERSİZ';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final isBist = signal.instrument.market == Market.bist;
-    final accent = isBist ? GunduzColors.accent : GunduzColors.coral;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: accent.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    isBist ? 'BIST' : 'KRİPTO',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: accent),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '${signal.instrument.symbol} · ${signal.strategy.label}',
-                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: signal.isActive
-                        ? GunduzColors.accent.withValues(alpha: 0.12)
-                        : GunduzColors.profitGreen.withValues(alpha: 0.14),
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    _statusLabel(signal.status),
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: signal.isActive ? GunduzColors.accent : GunduzColors.profitGreen,
+                'Son 7 günde bu piyasada kısa vade sinyali üretilmedi.',
+                style: TextStyle(fontSize: 12.5, color: p.textDim),
+              )
+            else ...[
+              Row(
+                children: [
+                  Expanded(child: StatTile(label: 'Sinyal', value: '${stats.totalSignals}', hint: '${stats.openSignals} açık')),
+                  Expanded(
+                    child: StatTile(
+                      label: 'İsabet',
+                      value: hasClosed ? Fmt.pct(stats.winRatePct, decimals: 0) : '—',
+                      hint: '${stats.closedSignals} kapanan',
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(signal.rationale, style: const TextStyle(fontSize: 12)),
-            const SizedBox(height: 8),
-            Text(
-              'Giriş: ${signal.entryZoneLow.toStringAsFixed(2).replaceAll('.', ',')}–${signal.entryZoneHigh.toStringAsFixed(2).replaceAll('.', ',')} · Stop: ${signal.currentStop.toStringAsFixed(2).replaceAll('.', ',')} · 1R: ${signal.target1.toStringAsFixed(2).replaceAll('.', ',')} · 2R: ${signal.target2.toStringAsFixed(2).replaceAll('.', ',')}',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'Güven Skoru: ${signal.confidence.total}/100 (Monte Carlo: +${signal.confidence.monteCarloScore}/15)',
-                    style: const TextStyle(fontSize: 11),
+                  Expanded(
+                    child: StatTile(
+                      label: 'Ortalama R',
+                      value: hasClosed ? Fmt.r(stats.avgR) : '—',
+                      valueColor: !hasClosed ? null : (stats.avgR > 0 ? p.profit : (stats.avgR < 0 ? p.loss : null)),
+                    ),
                   ),
+                ],
+              ),
+              if (stats.closedSignals > 0 && stats.closedSignals < 30) ...[
+                const Gap(8),
+                Text(
+                  'Örneklem küçük (${stats.closedSignals} kapanan sinyal): bu oranlar istatistiksel olarak güvenilir değildir.',
+                  style: TextStyle(fontSize: 11.5, color: p.textDim, height: 1.35),
                 ),
-                if (signal.realizedR != null)
-                  SignedMetricChip(value: signal.realizedR!, suffix: 'R Gerçekleşen'),
               ],
-            ),
-            const SizedBox(height: 6),
-            DataProvenanceBadge(
-              sourceLabel: signal.dataSource,
-              ageMinutes: (signal.dataAgeMs / 60000).round(),
-              isStale: signal.dataStale,
-            ),
+              if (stats.byStrategy.isNotEmpty) ...[
+                const Gap(10),
+                for (final b in stats.byStrategy)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 2),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(b.strategyLabel, style: TextStyle(fontSize: 12, color: p.textDim)),
+                        ),
+                        Text(
+                          '${b.signalCount} sinyal'
+                          '${b.closedCount > 0 ? ' · ${Fmt.r(b.avgR)}' : ''}',
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ],
           ],
         ),
       ),

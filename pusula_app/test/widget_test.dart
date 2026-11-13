@@ -2,12 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:pusula_app/main.dart';
+import 'package:pusula_app/src/state/pusula_controller.dart';
 import 'package:pusula_app/src/theme/gunduz_theme.dart';
 
 void main() {
   void setPhoneViewport(WidgetTester tester) {
     tester.view.physicalSize = const Size(1080, 2400);
     tester.view.devicePixelRatio = 2.0;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+    });
+  }
+
+  void setWebViewport(WidgetTester tester) {
+    tester.view.physicalSize = const Size(1400, 900);
+    tester.view.devicePixelRatio = 1.0;
     addTearDown(() {
       tester.view.resetPhysicalSize();
       tester.view.resetDevicePixelRatio();
@@ -117,6 +127,45 @@ void main() {
       expect(find.textContaining('SPK mevzuatına tabi olabilir'), findsOneWidget);
       await tester.tap(find.text('Kapat'));
       await tester.pumpAndSettle();
+    });
+
+    testWidgets('Web geniş görünümünde NavigationRail görünür ve tüm sekmeler hatasız açılır', (tester) async {
+      setWebViewport(tester);
+      await tester.pumpWidget(const ProviderScope(child: PusulaApp()));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(NavigationRail), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+
+      await tester.tap(find.text('Öneri'));
+      await tester.pumpAndSettle();
+      expect(find.text('1. Geçen Hafta Önerilerinin Sonucu'), findsOneWidget);
+
+      await tester.tap(find.text('Sinyal'));
+      await tester.pumpAndSettle();
+      expect(find.text('Kripto Kısa Vade Özeti'), findsOneWidget);
+
+      await tester.tap(find.text('Ayar'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('btn_privacy_and_legal')), findsOneWidget);
+    });
+
+    testWidgets('Gerçek kip (demoSeed=false) başlangıçta sahte sinyal göstermez, tarama bekler', (tester) async {
+      setPhoneViewport(tester);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            demoSeedProvider.overrideWithValue(false),
+            liveNetworkEnabledProvider.overrideWithValue(false),
+          ],
+          child: const PusulaApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('Örnek veri'), findsNothing);
+      expect(find.text('Şimdilik nakitte'), findsOneWidget);
+      expect(find.text('Tarama bekleniyor'), findsOneWidget);
     });
   });
 }

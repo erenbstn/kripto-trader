@@ -9,4 +9,5 @@ build/
 *.keystore
 *.jks
 key.properties
+github-secret-base64.txt
 local.properties

@@ -255,6 +255,17 @@ veriyle yalnızca "gözlem" yazılır, belirsizlik (Wilson aralığı) açıkça
 - **Güven skoru (0–100) bileşen ağırlıkları:** Kurulum çakışması (25), hacim/alıcı teyidi (15), piyasa rejimi uyumu (15), üst zaman dilimi uyumu (15), Monte Carlo beklentisi (15), Ödül/Risk oranı (15).
 - **Kademeli hedef ve başabaş muhasebesi:** `target1` (1R) görüldüğünde durum `hedef1` olur ve stop giriş fiyatına çekilir; sonrasında başabaş stop çalışırsa ilk kademenin kârı korunarak `+0.5R` gerçekleşmiş sayılır. Aynı mumda hem stop hem hedef görülürse muhafazakâr olarak stop sayılır.
 
+### K9 — Analiz Motoru, Maliyet Süzgeci ve Dürüst Tarama (2026-11-13 · Strateji v2.1.0)
+- **Veri tazeliği süzgeci (`SignalEngine.maxSignalBarAge`):** Bayat (`stale`) veya kapanışı gecikmiş serilerden (kripto: max 3 mum veya 45 dk; BIST: saatlik 20 sa, günlük 4 gün) sinyal üretilmez; `FunnelStage.data` aşamasında elenir.
+- **Kurulum kalitesi süzgeci (`FunnelStage.quality`):** Kapanış tetik seviyesinden `> 1.5 × ATR14` uzaklaşmışsa (kovalama), kırılım mumu aralığının alt yarısında kapandıysa (üst fitil reddi `< 0.50`) veya hacim 20-mum ortalamasının altındaysa (`< 1.0×`) aday elenir.
+- **İşlem maliyeti ve net Ödül/Risk (`TradingCosts`, `FunnelStage.cost`):** Varsayılan gidiş-dönüş maliyet tahminleri (kripto %0,20, BIST %0,30) stop mesafesinin %25'ini (`maxCostShareOfRisk`) aşıyorsa veya maliyet sonrası net Ö/R `< 1.30` kalıyorsa elenir; güven skoru brüt değil net Ö/R üzerinden hesaplanır.
+- **Rejime duyarlı güven eşiği:** Boğa 50, Yatay 54 (+4), Ayı 58 (+8).
+- **Uçtan uca piyasa tarayıcı (`MarketScanner` & `ScanRunner`):** Kripto için 1h/4h (maksimum 4 eşzamanlı açık sinyal), BIST için 1h/1d (maksimum 5 eşzamanlı açık sinyal) taranır; `PAXGUSDT` ve `XAGUSDT` kendi üst dilim trendleriyle değerlendirilir (`ownRegimeSymbols`). Stop sonrası 6 mumluk soğuma (`cooldownBars = 6`) uygulanır. Gerçek uygulamada (`main.dart`) `demoSeedProvider` `false` yapılır; fırsat yoksa ekran dürüstçe %100 nakit gösterir.
+
+### K10 — GÜNDÜZ Bileşen Dili ve Çoklu Ekran Yerleşimi (2026-11-13)
+- **Sabit palet, yenilenen bileşen dili (`PusulaPalette`, `PusulaSpace`):** `#F6F4EF` / `#FFFFFF` / `#5B4BDB` / `#D85A30` GÜNDÜZ renkleri ve koyu tema karşılıkları tek merkezde (`PusulaPalette`) toplandı; `ConfidenceRing`, `PriceLadder`, `ConfidenceBars`, `EmptyNote`, `CardHeader` ve `RejectedCandidatesCard` eklendi.
+- **Duyarlı yerleşim (`PageBody`, `NavigationRail` / `NavigationBar`):** Mobilde (< 900 px) tek sütunlu liste ve alt `NavigationBar`, Web/geniş ekranda (>= 900 px) sol `NavigationRail` ve iki sütunlu `PageBody` (maksimum içerik genişliği 1240 px) kullanılır.
+
 ---
 
 ## Kaynaklar

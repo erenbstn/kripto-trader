@@ -365,10 +365,12 @@ void main() {
       expect(eval.approved, isTrue, reason: eval.reason);
       expect(eval.confidence, isNotNull);
       expect(eval.confidence!.total, inInclusiveRange(50, 100));
-      expect(eval.confidence!.reasons.length, 6);
+      // 6 bileşen + (varsa) kalite düzeltmesi satırı: bu senaryoda sinyal mumu 30 dk (6 mum) önce kapandı.
+      expect(eval.confidence!.reasons.length, inInclusiveRange(6, 7));
+      expect(eval.cost, isNotNull);
       expect(eval.signalRecord, isNotNull);
       expect(eval.signalRecord!.status, SignalStatus.open);
-      expect(eval.signalRecord!.strategyVersion, '2.0.0');
+      expect(eval.signalRecord!.strategyVersion, '2.1.0');
     });
   });
 }
