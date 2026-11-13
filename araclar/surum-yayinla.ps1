@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Sürüm numarasını (+1 buildNumber) artırır, testleri çalıştırır, sürüm etiketi
   oluşturup GitHub'a gönderir. GitHub Actions APK'yı derleyip Releases'a koyar.

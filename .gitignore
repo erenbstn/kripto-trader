@@ -2,7 +2,7 @@
 .env.*
 __pycache__/
 *.pyc
-data/
+/data/
 *.stackdump
 build/
 .dart_tool/

@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
   Android Release APK güncellemelerinin telefonundaki mevcut verileri silmeden
   üstüne kurulabilmesi için tek seferlik kişisel imza anahtarı (keystore) üretir.
