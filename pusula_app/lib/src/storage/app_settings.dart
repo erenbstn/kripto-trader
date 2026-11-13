@@ -21,7 +21,7 @@ class AppSettings {
     this.maxDailyNotifications = 20,
     this.liveMonitorEnabled = false,
     this.activeStrategyVersion = kStrategyVersion,
-    this.updateRepo = '',
+    this.updateRepo = 'erenbstn/kripto-trader',
     this.autoCheckUpdates = true,
   });
 
@@ -142,7 +142,7 @@ class AppSettings {
         maxDailyNotifications: (j['maxDailyNotifications'] as num?)?.toInt() ?? 20,
         liveMonitorEnabled: (j['liveMonitorEnabled'] as bool?) ?? false,
         activeStrategyVersion: (j['activeStrategyVersion'] as String?) ?? '2.0.0',
-        updateRepo: (j['updateRepo'] as String?) ?? '',
+        updateRepo: (j['updateRepo'] as String?) ?? 'erenbstn/kripto-trader',
         autoCheckUpdates: (j['autoCheckUpdates'] as bool?) ?? true,
       );
 }
