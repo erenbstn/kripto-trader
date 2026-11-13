@@ -1,8 +1,7 @@
 name: pusula_app
-description: "Pusula — Borsa İstanbul ve Kripto Kişisel Yatırım Asistanı (Yalnızca yerel analiz ve bildirim)."
+description: "Pusula â€” Borsa Ä°stanbul ve Kripto KiÅŸisel YatÄ±rÄ±m AsistanÄ± (YalnÄ±zca yerel analiz ve bildirim)."
 publish_to: 'none'
-version: 1.0.0+1
-
+version: 1.0.0+2
 environment:
   sdk: ^3.13.7
 
