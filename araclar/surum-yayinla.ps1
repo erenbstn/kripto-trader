@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Sürüm numarasını (+1 buildNumber) artırır, testleri çalıştırır, sürüm etiketi
   oluşturup GitHub'a gönderir. GitHub Actions APK'yı derleyip Releases'a koyar.
@@ -43,7 +43,7 @@ if (-not $SkipTests) {
 }
 
 $updated = [regex]::Replace($pubspec, '(?m)^version:\s*\d+\.\d+\.\d+\+\d+\s*$', "version: $nextFull")
-Set-Content -Path $pubspecPath -Value $updated -Encoding UTF8 -NoNewline
+[IO.File]::WriteAllText($pubspecPath, $updated, [Text.UTF8Encoding]::new($false))
 
 Write-Host "Yeni sürüm hazırlandı: $tag"
 

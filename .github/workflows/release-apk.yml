@@ -59,7 +59,7 @@ jobs:
             ALIAS="${KEY_ALIAS:-pusula}"
             KPASS="${KEY_PASS:-$KEYSTORE_PASS}"
             cat > pusula_app/android/key.properties <<EOF
-          storeFile=../pusula-release.jks
+          storeFile=pusula-release.jks
           storePassword=$KEYSTORE_PASS
           keyAlias=$ALIAS
           keyPassword=$KPASS

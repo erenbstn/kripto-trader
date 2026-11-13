@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Android Release APK güncellemelerinin telefonundaki mevcut verileri silmeden
   üstüne kurulabilmesi için tek seferlik kişisel imza anahtarı (keystore) üretir.
@@ -39,12 +39,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $propsContent = @"
-storeFile=../pusula-release.jks
+storeFile=pusula-release.jks
 storePassword=$pass
 keyAlias=pusula
 keyPassword=$pass
 "@
-Set-Content -Path $propsPath -Value $propsContent -Encoding UTF8
+[IO.File]::WriteAllText($propsPath, $propsContent, [Text.UTF8Encoding]::new($false))
 
 $b64 = [Convert]::ToBase64String([IO.File]::ReadAllBytes($jksPath))
 $b64Out = Join-Path $androidDir "github-secret-base64.txt"
