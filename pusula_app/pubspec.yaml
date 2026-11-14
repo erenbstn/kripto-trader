@@ -1,7 +1,7 @@
 name: pusula_app
-description: "Pusula â€” Borsa Ä°stanbul ve Kripto KiÅŸisel YatÄ±rÄ±m AsistanÄ± (YalnÄ±zca yerel analiz ve bildirim)."
+description: "Pusula Ã¢â‚¬â€ Borsa Ã„Â°stanbul ve Kripto KiÃ…Å¸isel YatÃ„Â±rÃ„Â±m AsistanÃ„Â± (YalnÃ„Â±zca yerel analiz ve bildirim)."
 publish_to: 'none'
-version: 1.0.0+2
+version: 1.0.0+3
 environment:
   sdk: ^3.13.7
 
