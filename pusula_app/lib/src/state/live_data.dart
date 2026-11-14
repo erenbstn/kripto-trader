@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:pusula_core/pusula_core.dart';
 
+import '../storage/app_settings.dart';
+
 /// Tek bir varlığın canlı piyasa fiyat özeti (Özet ekranındaki piyasa şeridinde gösterilir).
 class LiveMarketQuote {
   const LiveMarketQuote({
@@ -60,6 +62,75 @@ class PusulaHttpFetcher implements HttpFetcher {
 }
 
 /// Canlı izlenen BIST hisseleri (likiditesi en yüksek çekirdek liste). Rejim referansı XU100 ayrıca okunur.
+/// Tam Borsa İstanbul (BIST) hisse kataloğunu (kayıtlı tüm BIST hisseleri + kullanıcının ekledikleri) döner.
+List<Instrument> buildBistCatalog(AppSettings settings) {
+  final seen = <String>{};
+  final result = <Instrument>[];
+
+  void add(Instrument ins) {
+    final key = ins.symbol.trim().toUpperCase();
+    if (key.isEmpty || key == BistUniverse.benchmark.symbol || !seen.add(key)) return;
+    result.add(ins);
+  }
+
+  for (final ins in kWatchedBistStocks) {
+    add(ins);
+  }
+  for (final sym in settings.customBistSymbols) {
+    add(BistUniverse.instrumentFor(sym));
+  }
+  for (final ins in BistUniverse.candidates) {
+    add(ins);
+  }
+  return result;
+}
+
+/// Taramada değerlendirilecek BIST hisselerini ayarlara göre belirler.
+List<Instrument> buildWatchedBistForScan(AppSettings settings) {
+  final seen = <String>{};
+  final pool = <Instrument>[];
+
+  void add(Instrument ins) {
+    final key = ins.symbol.trim().toUpperCase();
+    if (key.isEmpty || key == BistUniverse.benchmark.symbol || !seen.add(key)) return;
+    pool.add(ins);
+  }
+
+  if (settings.scanAllBistUniverse) {
+    for (final ins in buildBistCatalog(settings)) {
+      add(ins);
+    }
+  } else {
+    for (final ins in kWatchedBistStocks) {
+      add(ins);
+    }
+    for (final sym in settings.customBistSymbols) {
+      add(BistUniverse.instrumentFor(sym));
+    }
+    for (final fav in settings.favoriteSymbols) {
+      final clean = fav.trim().toUpperCase();
+      if (!CryptoUniverse.contains(clean)) {
+        add(BistUniverse.instrumentFor(clean));
+      }
+    }
+  }
+
+  if (!settings.scanOnlyFavorites) return pool;
+  return [
+    for (final ins in pool)
+      if (settings.isFavorite(ins.symbol)) ins,
+  ];
+}
+
+/// Taramada değerlendirilecek kripto paraları yalnızca kullanıcının belirlediği 10 kripto ile sınırlar.
+List<Instrument> buildWatchedCryptoForScan(AppSettings settings) {
+  if (!settings.scanOnlyFavorites) return CryptoUniverse.instruments;
+  return [
+    for (final ins in CryptoUniverse.instruments)
+      if (settings.isFavorite(ins.symbol)) ins,
+  ];
+}
+
 const List<Instrument> kWatchedBistStocks = [
   Instrument.bist('THYAO', name: 'Türk Hava Yolları'),
   Instrument.bist('ASELS', name: 'Aselsan'),

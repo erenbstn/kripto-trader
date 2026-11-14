@@ -125,7 +125,7 @@ class _RecommendationDetailCardState extends State<RecommendationDetailCard> {
                   children: [
                     StatTile(
                       label: 'Giriş bölgesi',
-                      value: '${Fmt.price(sig.entryZoneLow, market)} – ${Fmt.price(sig.entryZoneHigh, market)}',
+                      value: '${Fmt.priceWithCurrency(sig.entryZoneLow, market)} – ${Fmt.priceWithCurrency(sig.entryZoneHigh, market)}',
                     ),
                     StatTile(
                       label: 'Stop mesafesi',

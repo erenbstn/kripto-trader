@@ -134,8 +134,12 @@ void main() {
       expect(why['BOS'], 'veri yok');
     });
 
-    test('aday listesi tekrarsız ve kripto evreni 10 varlık', () {
+    test('aday listesi tekrarsız, tam BIST kataloğu ve kripto evreni 10 varlık', () {
       expect(BistUniverse.candidateSymbols.toSet().length, BistUniverse.candidateSymbols.length);
+      expect(BistUniverse.candidateSymbols.length, greaterThanOrEqualTo(200));
+      expect(BistUniverse.nameOf('THYAO'), 'Türk Hava Yolları');
+      expect(BistUniverse.instrumentFor('thyao.is').symbol, 'THYAO');
+      expect(BistUniverse.instrumentFor('thyao.is').name, 'Türk Hava Yolları');
       expect(CryptoUniverse.instruments.length, 10);
       expect(CryptoUniverse.contains('SOLUSDT'), isTrue);
       expect(CryptoUniverse.contains('DOGEUSDT'), isFalse);

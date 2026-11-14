@@ -5,6 +5,7 @@ import 'package:pusula_app/main.dart';
 import 'package:pusula_app/src/state/pusula_controller.dart';
 import 'package:pusula_app/src/theme/gunduz_theme.dart';
 import 'package:pusula_app/src/widgets/common.dart';
+import 'package:pusula_core/pusula_core.dart';
 
 void main() {
   void setPhoneViewport(WidgetTester tester) {
@@ -184,6 +185,73 @@ void main() {
       expect(find.textContaining('Örnek veri'), findsNothing);
       expect(find.text('Şimdilik nakitte'), findsOneWidget);
       expect(find.text('Tarama bekleniyor'), findsOneWidget);
+    });
+
+    testWidgets('BIST fiyatları ₺, Kripto fiyatları \$ ile gösterilir; favoriler ve BIST kataloğu çalışır',
+        (tester) async {
+      expect(Fmt.priceWithCurrency(313.75, Market.bist), '₺313,75');
+      expect(Fmt.priceWithCurrency(73506.01, Market.crypto), '\$73.506');
+      expect(Fmt.priceWithCurrency(82.90, Market.crypto), '\$82,900');
+
+      setPhoneViewport(tester);
+      await tester.pumpWidget(const ProviderScope(child: PusulaApp()));
+      await tester.pumpAndSettle();
+
+      final pageScrollable = find
+          .descendant(
+            of: find.byType(PageBody),
+            matching: find.byWidgetPredicate(
+              (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
+            ),
+          )
+          .first;
+      final favFilter = find.byKey(const Key('filter_market_favorites'));
+      final scrollableState = tester.state<ScrollableState>(pageScrollable);
+      while (favFilter.evaluate().isEmpty &&
+          scrollableState.position.pixels < scrollableState.position.maxScrollExtent) {
+        scrollableState.position.jumpTo(
+          (scrollableState.position.pixels + 250).clamp(
+            0.0,
+            scrollableState.position.maxScrollExtent,
+          ),
+        );
+        await tester.pump();
+      }
+      await Scrollable.ensureVisible(tester.element(favFilter), alignment: 0.3);
+      await tester.pumpAndSettle();
+
+      await tester.tap(favFilter);
+      await tester.pumpAndSettle();
+
+      expect(find.text('₺313,75'), findsWidgets);
+      expect(find.text('\$73.506'), findsWidgets);
+      expect(find.text('₺155,40'), findsNothing);
+
+      final browserBtn = find.byKey(const Key('btn_open_universe_browser'));
+      await Scrollable.ensureVisible(tester.element(browserBtn), alignment: 0.25);
+      await tester.pumpAndSettle();
+      await tester.tap(browserBtn);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Piyasa Kataloğu & Favoriler'), findsOneWidget);
+      expect(find.textContaining('Tüm BIST hisselerini tara'), findsOneWidget);
+
+      final sheetSearch = find.byKey(const Key('field_universe_search'));
+      await tester.enterText(sheetSearch, 'FROTO');
+      await tester.pumpAndSettle();
+      expect(find.text('Ford Otosan'), findsOneWidget);
+
+      await tester.tap(find.byKey(const Key('btn_sheet_fav_FROTO')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(sheetSearch, '');
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('sheet_tab_crypto')));
+      await tester.pumpAndSettle();
+      expect(
+        find.textContaining('Kripto taraması ve fiyat ekranı yalnızca belirlediğin 10 kripto için aktiftir'),
+        findsOneWidget,
+      );
     });
   });
 }

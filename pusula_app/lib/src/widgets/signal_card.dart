@@ -110,12 +110,12 @@ class SignalCard extends StatelessWidget {
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: Text(
-                  'Stop başabaşa (${Fmt.price(s.currentStop, market)}) çekildi; kalan pozisyon ana hedefi bekliyor.',
+                  'Stop başabaşa (${Fmt.priceWithCurrency(s.currentStop, market)}) çekildi; kalan pozisyon ana hedefi bekliyor.',
                   style: TextStyle(fontSize: 12, color: p.profit, fontWeight: FontWeight.w600),
                 ),
               ),
             Text(
-              'Giriş bölgesi ${Fmt.price(s.entryZoneLow, market)} – ${Fmt.price(s.entryZoneHigh, market)} ${Fmt.currency(market)}'
+              'Giriş bölgesi ${Fmt.priceWithCurrency(s.entryZoneLow, market)} – ${Fmt.priceWithCurrency(s.entryZoneHigh, market)}'
               ' · Ö/R ${Fmt.number(s.rewardRisk, decimals: 1)}'
               ' · Monte Carlo +${s.confidence.monteCarloScore}/15',
               style: TextStyle(fontSize: 12, color: p.textDim, height: 1.35),

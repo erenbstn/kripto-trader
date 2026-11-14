@@ -23,6 +23,10 @@ class AppSettings {
     this.activeStrategyVersion = kStrategyVersion,
     this.updateRepo = 'erenbstn/kripto-trader',
     this.autoCheckUpdates = true,
+    this.favoriteSymbols = const ['THYAO', 'ASELS', 'BTCUSDT', 'SOLUSDT'],
+    this.customBistSymbols = const [],
+    this.scanOnlyFavorites = false,
+    this.scanAllBistUniverse = false,
   });
 
   /// Kullanıcının referans portföy bütçesi (TL). Yalnızca ağırlık tutarı gösterimi içindir.
@@ -59,8 +63,26 @@ class AppSettings {
   /// Uygulama açılışında GitHub Releases üzerinden sessiz güncelleme denetimi.
   final bool autoCheckUpdates;
 
+  /// Kullanıcının yıldızladığı favori hisse ve kripto sembolleri.
+  final List<String> favoriteSymbols;
+
+  /// Kullanıcının BIST kataloğu dışında veya hızlı erişim için eklediği ek hisse kodları.
+  final List<String> customBistSymbols;
+
+  /// true ise piyasa taramasında yalnızca favori varlıklar taranır.
+  final bool scanOnlyFavorites;
+
+  /// true ise BIST tarafında tüm Borsa İstanbul hisse kataloğu taranır.
+  final bool scanAllBistUniverse;
+
   /// Animasyonların sadeleştirilmesi gerekiyor mu? (Kısıt 10).
   bool get shouldSimplifyAnimations => reduceAnimations || batterySaverMode;
+
+  bool isFavorite(String symbol) {
+    final clean = symbol.trim().toUpperCase();
+    if (clean.isEmpty) return false;
+    return favoriteSymbols.any((s) => s.trim().toUpperCase() == clean);
+  }
 
   AppSettings copyWith({
     double? budgetAmount,
@@ -80,6 +102,10 @@ class AppSettings {
     String? activeStrategyVersion,
     String? updateRepo,
     bool? autoCheckUpdates,
+    List<String>? favoriteSymbols,
+    List<String>? customBistSymbols,
+    bool? scanOnlyFavorites,
+    bool? scanAllBistUniverse,
   }) =>
       AppSettings(
         budgetAmount: budgetAmount ?? this.budgetAmount,
@@ -99,6 +125,10 @@ class AppSettings {
         activeStrategyVersion: activeStrategyVersion ?? this.activeStrategyVersion,
         updateRepo: updateRepo ?? this.updateRepo,
         autoCheckUpdates: autoCheckUpdates ?? this.autoCheckUpdates,
+        favoriteSymbols: favoriteSymbols ?? this.favoriteSymbols,
+        customBistSymbols: customBistSymbols ?? this.customBistSymbols,
+        scanOnlyFavorites: scanOnlyFavorites ?? this.scanOnlyFavorites,
+        scanAllBistUniverse: scanAllBistUniverse ?? this.scanAllBistUniverse,
       );
 
   Map<String, Object?> toJson() => {
@@ -119,7 +149,19 @@ class AppSettings {
         'activeStrategyVersion': activeStrategyVersion,
         'updateRepo': updateRepo,
         'autoCheckUpdates': autoCheckUpdates,
+        'favoriteSymbols': favoriteSymbols,
+        'customBistSymbols': customBistSymbols,
+        'scanOnlyFavorites': scanOnlyFavorites,
+        'scanAllBistUniverse': scanAllBistUniverse,
       };
+
+  static List<String>? _readStringList(Object? raw) {
+    if (raw is! List) return null;
+    return [
+      for (final item in raw)
+        if (item is String && item.trim().isNotEmpty) item.trim().toUpperCase(),
+    ];
+  }
 
   static AppSettings fromJson(Map<String, Object?> j) => AppSettings(
         budgetAmount: (j['budgetAmount'] as num?)?.toDouble() ?? 100000.0,
@@ -144,6 +186,10 @@ class AppSettings {
         activeStrategyVersion: (j['activeStrategyVersion'] as String?) ?? '2.0.0',
         updateRepo: (j['updateRepo'] as String?) ?? 'erenbstn/kripto-trader',
         autoCheckUpdates: (j['autoCheckUpdates'] as bool?) ?? true,
+        favoriteSymbols: _readStringList(j['favoriteSymbols']) ?? const ['THYAO', 'ASELS', 'BTCUSDT', 'SOLUSDT'],
+        customBistSymbols: _readStringList(j['customBistSymbols']) ?? const [],
+        scanOnlyFavorites: (j['scanOnlyFavorites'] as bool?) ?? false,
+        scanAllBistUniverse: (j['scanAllBistUniverse'] as bool?) ?? false,
       );
 }
 

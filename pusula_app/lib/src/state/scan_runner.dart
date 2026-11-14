@@ -68,6 +68,8 @@ class ScanRunner {
     bool headless = false,
     void Function(int done, int total)? onProgress,
   }) async {
+    final watchedCrypto = buildWatchedCryptoForScan(settings);
+    final watchedBist = buildWatchedBistForScan(settings);
     PusulaHttpFetcher? fetcher;
     final MarketDataService data;
     if (dataServiceFactory != null) {
@@ -77,21 +79,42 @@ class ScanRunner {
       data = MarketDataService(
         providers: [BinanceProvider(fetcher), YahooProvider(fetcher), IsYatirimProvider(fetcher)],
         cache: storage.candleCache,
+        limiter: watchedBist.length > 25
+            ? RateLimiter(minGap: const Duration(milliseconds: 90), clock: _clock)
+            : RateLimiter(clock: _clock),
         clock: _clock,
       );
     }
 
     try {
       final scanner = MarketScanner(data: data, journal: storage.journalStore, clock: _clock);
+      final plans = <MarketScanPlan>[
+        if (watchedCrypto.isNotEmpty)
+          watchedCrypto.length == CryptoUniverse.instruments.length
+              ? MarketScanPlan.crypto()
+              : MarketScanPlan(
+                  market: Market.crypto,
+                  instruments: watchedCrypto,
+                  benchmark: CryptoUniverse.benchmark,
+                  benchmarkInterval: BarInterval.h4,
+                  intervals: const [
+                    ScanIntervalPlan(BarInterval.h1, weekly: false),
+                    ScanIntervalPlan(BarInterval.h4, weekly: true),
+                  ],
+                  maxOpenSignals: 4,
+                  ownRegimeSymbols: CryptoUniverse.commodityProxies,
+                ),
+        if (watchedBist.isNotEmpty) MarketScanPlan.bist(watchedBist),
+      ];
       final outcome = await scanner.scan(
-        [MarketScanPlan.crypto(), MarketScanPlan.bist(kWatchedBistStocks)],
+        plans,
         forceRefresh: forceRefresh,
         onProgress: onProgress,
       );
 
       final now = _clock().toUtc();
-      final cryptoQuotes = _cryptoQuotes(outcome, now);
-      final bistQuotes = _bistQuotes(outcome, now);
+      final cryptoQuotes = _cryptoQuotes(outcome, now, watchedCrypto);
+      final bistQuotes = _bistQuotes(outcome, now, watchedBist);
 
       // Haftalık rapor: bu haftanın kimliğiyle yerinde güncellenir; geçen haftanın karnesi yalnızca
       // o hafta önerilmiş ve ileriye dönük izlenmiş kayıtlardan hesaplanır.
@@ -144,9 +167,9 @@ class ScanRunner {
     }
   }
 
-  List<LiveMarketQuote> _cryptoQuotes(ScanOutcome outcome, DateTime now) {
+  List<LiveMarketQuote> _cryptoQuotes(ScanOutcome outcome, DateTime now, List<Instrument> watchedCrypto) {
     final out = <LiveMarketQuote>[];
-    for (final ins in CryptoUniverse.instruments) {
+    for (final ins in watchedCrypto) {
       final s = outcome.seriesFor(ins, BarInterval.h1);
       if (s == null || s.closed.isEmpty) continue;
       // 24 saat önceki kapanışa göre değişim (yeterli mum yoksa eldeki en eski mum).
@@ -166,9 +189,9 @@ class ScanRunner {
     return out;
   }
 
-  List<LiveMarketQuote> _bistQuotes(ScanOutcome outcome, DateTime now) {
+  List<LiveMarketQuote> _bistQuotes(ScanOutcome outcome, DateTime now, List<Instrument> watchedBist) {
     final out = <LiveMarketQuote>[];
-    for (final ins in [BistUniverse.benchmark, ...kWatchedBistStocks]) {
+    for (final ins in [BistUniverse.benchmark, ...watchedBist]) {
       final s = outcome.seriesFor(ins, BarInterval.d1);
       if (s == null || s.closed.isEmpty) continue;
       final c = s.closed;
@@ -188,8 +211,9 @@ class ScanRunner {
   }
 
   static String _fmt(double v, Market m) {
+    final prefix = m == Market.bist ? '₺' : '\$';
     final d = m == Market.bist ? 2 : (v >= 100 ? 2 : (v >= 1 ? 3 : 5));
-    return v.toStringAsFixed(d).replaceAll('.', ',');
+    return '$prefix${v.toStringAsFixed(d).replaceAll('.', ',')}';
   }
 
   Future<void> _notify(

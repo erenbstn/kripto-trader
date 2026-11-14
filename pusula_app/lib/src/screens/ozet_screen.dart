@@ -15,8 +15,17 @@ import '../widgets/signal_card.dart';
 /// Üstte büyük portföy bütçesi kahraman rakamı, Nakit Koruma kapsülü, etkileşimli 3B/2B
 /// bütçe dağılım halkası, son tarama hunisi ve sağ/alt akışta yatay haftalık öneri kartları
 /// ile çerçevesiz piyasa/sinyal satırları yer alır.
-class OzetScreen extends ConsumerWidget {
+enum _MarketListFilter { all, favorites, bist, crypto }
+
+class OzetScreen extends ConsumerStatefulWidget {
   const OzetScreen({super.key});
+
+  @override
+  ConsumerState<OzetScreen> createState() => _OzetScreenState();
+}
+
+class _OzetScreenState extends ConsumerState<OzetScreen> {
+  _MarketListFilter _marketFilter = _MarketListFilter.all;
 
   bool _matchesQuery(Instrument ins, String q) {
     if (q.isEmpty) return true;
@@ -245,7 +254,7 @@ class OzetScreen extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final state = ref.watch(pusulaControllerProvider);
     final controller = ref.read(pusulaControllerProvider.notifier);
     final query = ref.watch(searchQueryProvider).trim().toLowerCase();
@@ -263,14 +272,67 @@ class OzetScreen extends ConsumerWidget {
       for (final r in alloc.recommendations)
         if (_matchesQuery(r.instrument, query)) r,
     ];
+    final bistCatalog = buildBistCatalog(state.settings);
+    final showCryptoSection = _marketFilter == _MarketListFilter.all ||
+        _marketFilter == _MarketListFilter.favorites ||
+        _marketFilter == _MarketListFilter.crypto;
+    final showBistSection = _marketFilter == _MarketListFilter.all ||
+        _marketFilter == _MarketListFilter.favorites ||
+        _marketFilter == _MarketListFilter.bist;
+
     final cryptoQuotes = [
-      for (final q in state.cryptoQuotes)
-        if (_matchesQuery(q.instrument, query)) q,
+      if (showCryptoSection)
+        for (final q in state.cryptoQuotes)
+          if (CryptoUniverse.contains(q.instrument.symbol) &&
+              _matchesQuery(q.instrument, query) &&
+              (_marketFilter != _MarketListFilter.favorites ||
+                  state.settings.isFavorite(q.instrument.symbol)))
+            q,
     ];
     final bistQuotes = [
-      for (final q in state.bistQuotes)
-        if (_matchesQuery(q.instrument, query)) q,
+      if (showBistSection)
+        for (final q in state.bistQuotes)
+          if (_matchesQuery(q.instrument, query) &&
+              (_marketFilter != _MarketListFilter.favorites ||
+                  (q.instrument.symbol != BistUniverse.benchmark.symbol &&
+                      state.settings.isFavorite(q.instrument.symbol))))
+            q,
     ];
+
+    final listedSymbols = <String>{
+      for (final q in bistQuotes) q.instrument.symbol.toUpperCase(),
+      for (final q in cryptoQuotes) q.instrument.symbol.toUpperCase(),
+    };
+
+    final extraLookupInstruments = <Instrument>[];
+    if (query.isNotEmpty && showBistSection) {
+      for (final ins in bistCatalog) {
+        if (!listedSymbols.contains(ins.symbol.toUpperCase()) && _matchesQuery(ins, query)) {
+          extraLookupInstruments.add(ins);
+          if (extraLookupInstruments.length >= 8) break;
+        }
+      }
+      final cleanQuery = BistUniverse.normalizeSymbol(query);
+      if (RegExp(r'^[A-Z0-9]{3,6}$').hasMatch(cleanQuery) &&
+          !CryptoUniverse.contains(cleanQuery) &&
+          !listedSymbols.contains(cleanQuery) &&
+          !extraLookupInstruments.any((i) => i.symbol.toUpperCase() == cleanQuery)) {
+        extraLookupInstruments.add(BistUniverse.instrumentFor(cleanQuery));
+      }
+    } else if (query.isEmpty && _marketFilter == _MarketListFilter.favorites) {
+      for (final sym in state.settings.favoriteSymbols) {
+        final clean = sym.trim().toUpperCase();
+        if (clean.isEmpty || listedSymbols.contains(clean)) continue;
+        final isCrypto = CryptoUniverse.contains(clean);
+        if (isCrypto && showCryptoSection) {
+          extraLookupInstruments.add(
+            CryptoUniverse.instruments.firstWhere((c) => c.symbol == clean),
+          );
+        } else if (!isCrypto && showBistSection && clean != BistUniverse.benchmark.symbol) {
+          extraLookupInstruments.add(BistUniverse.instrumentFor(clean));
+        }
+      }
+    }
 
     return PageBody(
       primary: [
@@ -420,17 +482,76 @@ class OzetScreen extends ConsumerWidget {
               ),
             ),
           ),
-        const SectionTitle(
-          'Piyasa ›',
-          subtitle: 'Kripto Binance anlık, BIST Yahoo/İş Yatırım ~15 dk gecikmeli.',
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            const Expanded(
+              child: SectionTitle(
+                'Piyasa ›',
+                subtitle: 'BIST fiyatları ₺, Kripto fiyatları \$ (yalnızca belirlediğin 10 coin).',
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: FilledButton.tonalIcon(
+                key: const Key('btn_open_universe_browser'),
+                style: FilledButton.styleFrom(
+                  minimumSize: const Size(0, 36),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                ),
+                onPressed: () => _openUniverseBrowser(context),
+                icon: const Icon(Icons.star_border_rounded, size: 17),
+                label: Text('BIST (${bistCatalog.length}) & Favoriler', style: const TextStyle(fontSize: 12)),
+              ),
+            ),
+          ],
         ),
-        if (cryptoQuotes.isEmpty && bistQuotes.isEmpty)
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              _FilterPillChip(
+                key: const Key('filter_market_all'),
+                label: 'Tümü',
+                selected: _marketFilter == _MarketListFilter.all,
+                onTap: () => setState(() => _marketFilter = _MarketListFilter.all),
+              ),
+              const SizedBox(width: 8),
+              _FilterPillChip(
+                key: const Key('filter_market_favorites'),
+                label: '★ Favoriler',
+                selected: _marketFilter == _MarketListFilter.favorites,
+                onTap: () => setState(() => _marketFilter = _MarketListFilter.favorites),
+              ),
+              const SizedBox(width: 8),
+              _FilterPillChip(
+                key: const Key('filter_market_bist'),
+                label: 'BIST (₺)',
+                selected: _marketFilter == _MarketListFilter.bist,
+                onTap: () => setState(() => _marketFilter = _MarketListFilter.bist),
+              ),
+              const SizedBox(width: 8),
+              _FilterPillChip(
+                key: const Key('filter_market_crypto'),
+                label: 'Kripto (\$)',
+                selected: _marketFilter == _MarketListFilter.crypto,
+                onTap: () => setState(() => _marketFilter = _MarketListFilter.crypto),
+              ),
+            ],
+          ),
+        ),
+        const Gap(10),
+        if (cryptoQuotes.isEmpty && bistQuotes.isEmpty && extraLookupInstruments.isEmpty)
           EmptyNote(
-            icon: Icons.show_chart,
-            title: query.isNotEmpty ? 'Eşleşen varlık bulunamadı' : 'Fiyat verisi henüz yok',
-            body: query.isNotEmpty
-                ? 'Farklı bir hisse kodu (ör. THYAO) veya kripto adı (ör. BTC) deneyin.'
-                : 'Tarama tamamlandığında 10 kripto varlığı ve BIST izleme listesi burada listelenir.',
+            icon: _marketFilter == _MarketListFilter.favorites ? Icons.star_outline_rounded : Icons.show_chart,
+            title: _marketFilter == _MarketListFilter.favorites
+                ? 'Henüz favori varlık yok'
+                : (query.isNotEmpty ? 'Eşleşen varlık bulunamadı' : 'Fiyat verisi henüz yok'),
+            body: _marketFilter == _MarketListFilter.favorites
+                ? 'Hisse veya kripto satırındaki yıldız (☆) simgesine dokunarak ya da BIST Kataloğu üzerinden favori ekleyin.'
+                : (query.isNotEmpty
+                    ? 'Farklı bir BIST hisse kodu (ör. THYAO, FROTO) veya listedeki 10 kriptodan birini deneyin.'
+                    : 'Tarama başlatabilir veya BIST Kataloğu üzerinden grafik açmadan tekil hisse fiyatına bakabilirsiniz.'),
           )
         else
           Card(
@@ -444,32 +565,89 @@ class OzetScreen extends ConsumerWidget {
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
                         children: [
-                          Tag('KRİPTO', color: p.coral),
+                          Tag('KRİPTO (\$)', color: p.coral),
                           const SizedBox(width: 8),
-                          Text('Binance Spot · anlık', style: TextStyle(fontSize: 11.5, color: p.textDim)),
+                          Expanded(
+                            child: Text(
+                              '10 coin · Binance anlık',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11.5, color: p.textDim),
+                            ),
+                          ),
                         ],
                       ),
                     ),
                     for (final (i, q) in cryptoQuotes.indexed) ...[
                       if (i > 0) Divider(color: p.border.withValues(alpha: 0.35)),
-                      _PhantomQuoteRow(quote: q),
+                      _PhantomQuoteRow(
+                        quote: q,
+                        isFavorite: state.settings.isFavorite(q.instrument.symbol),
+                        onToggleFavorite: () => controller.toggleFavorite(q.instrument),
+                      ),
                     ],
                   ],
-                  if (cryptoQuotes.isNotEmpty && bistQuotes.isNotEmpty) const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
+                  if (cryptoQuotes.isNotEmpty && bistQuotes.isNotEmpty)
+                    const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
                   if (bistQuotes.isNotEmpty) ...[
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 4),
                       child: Row(
                         children: [
-                          Tag('BIST', color: p.accent),
+                          Tag('BIST (₺)', color: p.accent),
                           const SizedBox(width: 8),
-                          Text('Yahoo Finance · ~15 dk', style: TextStyle(fontSize: 11.5, color: p.textDim)),
+                          Expanded(
+                            child: Text(
+                              'Yahoo Finance · ~15 dk',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11.5, color: p.textDim),
+                            ),
+                          ),
                         ],
                       ),
                     ),
                     for (final (i, q) in bistQuotes.indexed) ...[
                       if (i > 0) Divider(color: p.border.withValues(alpha: 0.35)),
-                      _PhantomQuoteRow(quote: q),
+                      _PhantomQuoteRow(
+                        quote: q,
+                        isFavorite: state.settings.isFavorite(q.instrument.symbol),
+                        showFavoriteButton: q.instrument.symbol != BistUniverse.benchmark.symbol,
+                        onToggleFavorite: () => controller.toggleFavorite(q.instrument),
+                      ),
+                    ],
+                  ],
+                  if (extraLookupInstruments.isNotEmpty) ...[
+                    if (cryptoQuotes.isNotEmpty || bistQuotes.isNotEmpty)
+                      const Padding(padding: EdgeInsets.symmetric(vertical: 8), child: Divider()),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Tag(
+                            _marketFilter == _MarketListFilter.favorites ? 'FAVORİ FİYAT' : 'BIST KATALOĞU (₺)',
+                            color: p.accent,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Grafik açmadan anlık fiyat al',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11.5, color: p.textDim),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    for (final (i, ins) in extraLookupInstruments.indexed) ...[
+                      if (i > 0) Divider(color: p.border.withValues(alpha: 0.35)),
+                      _CatalogLookupRow(
+                        instrument: ins,
+                        isFavorite: state.settings.isFavorite(ins.symbol),
+                        onToggleFavorite: () => controller.toggleFavorite(ins),
+                        onFetchQuote: () => controller.fetchSingleQuote(ins),
+                      ),
                     ],
                   ],
                 ],
@@ -508,6 +686,18 @@ class OzetScreen extends ConsumerWidget {
             ),
           ),
       ],
+    );
+  }
+
+  void _openUniverseBrowser(BuildContext context) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: PusulaPalette.of(context).background,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => const _UniverseBrowserSheet(),
     );
   }
 }
@@ -766,7 +956,7 @@ class _PhantomSignalRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
-                  '${Fmt.price(price, signal.instrument.market)} ${Fmt.currency(signal.instrument.market)}',
+                  Fmt.priceWithCurrency(price, signal.instrument.market),
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
@@ -792,9 +982,17 @@ class _PhantomSignalRow extends StatelessWidget {
 }
 
 class _PhantomQuoteRow extends StatelessWidget {
-  const _PhantomQuoteRow({required this.quote});
+  const _PhantomQuoteRow({
+    required this.quote,
+    required this.isFavorite,
+    required this.onToggleFavorite,
+    this.showFavoriteButton = true,
+  });
 
   final LiveMarketQuote quote;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
+  final bool showFavoriteButton;
 
   @override
   Widget build(BuildContext context) {
@@ -843,7 +1041,7 @@ class _PhantomQuoteRow extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                Fmt.price(quote.lastPrice, quote.instrument.market),
+                Fmt.priceWithCurrency(quote.lastPrice, quote.instrument.market),
                 style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
@@ -861,6 +1059,22 @@ class _PhantomQuoteRow extends StatelessWidget {
               ),
             ],
           ),
+          if (showFavoriteButton) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              key: Key('btn_fav_${quote.instrument.symbol}'),
+              onPressed: onToggleFavorite,
+              tooltip: isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle',
+              visualDensity: VisualDensity.compact,
+              constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+              padding: EdgeInsets.zero,
+              icon: Icon(
+                isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+                size: 20,
+                color: isFavorite ? Colors.amber : p.textDim,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -981,7 +1195,7 @@ class _ScanSummaryCard extends StatelessWidget {
         icon: Icons.travel_explore,
         title: state.isLoading ? 'Piyasa taranıyor…' : 'Tarama bekleniyor',
         body: state.isLoading
-            ? '10 kripto varlığı ve BIST izleme listesi kapanmış mumlarla değerlendiriliyor.'
+            ? '${state.settings.scanAllBistUniverse ? '10 kripto ve tüm BIST kataloğu' : '10 kripto ve seçili BIST listesi'} kapanmış mumlarla değerlendiriliyor.'
             : 'Tarama; veri tazeliği, kurulum kalitesi, işlem maliyeti, Monte Carlo ve güven eşiği süzgeçlerinden geçer.',
         action: state.isLoading
             ? null
@@ -1059,6 +1273,467 @@ class _ScanSummaryCard extends StatelessWidget {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterPillChip extends StatelessWidget {
+  const _FilterPillChip({
+    super.key,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 7),
+        decoration: BoxDecoration(
+          color: selected ? p.accentSoft : p.card,
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? p.accent : p.border.withValues(alpha: 0.7),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: selected ? p.accent : p.text,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CatalogLookupRow extends StatefulWidget {
+  const _CatalogLookupRow({
+    required this.instrument,
+    required this.isFavorite,
+    required this.onToggleFavorite,
+    required this.onFetchQuote,
+  });
+
+  final Instrument instrument;
+  final bool isFavorite;
+  final VoidCallback onToggleFavorite;
+  final Future<LiveMarketQuote?> Function() onFetchQuote;
+
+  @override
+  State<_CatalogLookupRow> createState() => _CatalogLookupRowState();
+}
+
+class _CatalogLookupRowState extends State<_CatalogLookupRow> {
+  bool _loading = false;
+
+  Future<void> _fetch() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      await widget.onFetchQuote();
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    final currSymbol = Fmt.currencySymbol(widget.instrument.market);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          SymbolAvatarBadge(instrument: widget.instrument, size: 36),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.instrument.short,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                ),
+                Text(
+                  widget.instrument.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11.5, color: p.textDim),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton.tonal(
+            key: Key('btn_fetch_quote_${widget.instrument.symbol}'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 32),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            ),
+            onPressed: _loading ? null : _fetch,
+            child: _loading
+                ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                : Text('Fiyatı Gör ($currSymbol)', style: const TextStyle(fontSize: 11.5)),
+          ),
+          const SizedBox(width: 4),
+          IconButton(
+            key: Key('btn_fav_${widget.instrument.symbol}'),
+            onPressed: widget.onToggleFavorite,
+            tooltip: widget.isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle',
+            visualDensity: VisualDensity.compact,
+            constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+            padding: EdgeInsets.zero,
+            icon: Icon(
+              widget.isFavorite ? Icons.star_rounded : Icons.star_outline_rounded,
+              size: 20,
+              color: widget.isFavorite ? Colors.amber : p.textDim,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _UniverseBrowserSheet extends ConsumerStatefulWidget {
+  const _UniverseBrowserSheet();
+
+  @override
+  ConsumerState<_UniverseBrowserSheet> createState() => _UniverseBrowserSheetState();
+}
+
+class _UniverseBrowserSheetState extends ConsumerState<_UniverseBrowserSheet> {
+  int _tab = 0; // 0 = BIST (₺), 1 = 10 Kripto ($)
+  final TextEditingController _searchCtrl = TextEditingController();
+  String _query = '';
+  final Set<String> _loadingSymbols = {};
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _fetchOne(PusulaController controller, Instrument ins) async {
+    final key = ins.symbol.toUpperCase();
+    if (_loadingSymbols.contains(key)) return;
+    setState(() => _loadingSymbols.add(key));
+    try {
+      await controller.fetchSingleQuote(ins);
+    } finally {
+      if (mounted) {
+        setState(() => _loadingSymbols.remove(key));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = ref.watch(pusulaControllerProvider);
+    final controller = ref.read(pusulaControllerProvider.notifier);
+    final p = PusulaPalette.of(context);
+    final bistCatalog = buildBistCatalog(state.settings);
+
+    final bistQuotesMap = {
+      for (final q in state.bistQuotes) q.instrument.symbol.toUpperCase(): q,
+    };
+    final cryptoQuotesMap = {
+      for (final q in state.cryptoQuotes) q.instrument.symbol.toUpperCase(): q,
+    };
+
+    final q = _query.trim().toLowerCase();
+    final filteredBist = [
+      for (final ins in bistCatalog)
+        if (q.isEmpty || ins.short.toLowerCase().contains(q) || ins.name.toLowerCase().contains(q)) ins,
+    ];
+    if (q.isEmpty) {
+      filteredBist.sort((a, b) {
+        final af = state.settings.isFavorite(a.symbol) ? 0 : 1;
+        final bf = state.settings.isFavorite(b.symbol) ? 0 : 1;
+        return af.compareTo(bf);
+      });
+    }
+
+    final filteredCrypto = [
+      for (final ins in CryptoUniverse.instruments)
+        if (q.isEmpty || ins.short.toLowerCase().contains(q) || ins.name.toLowerCase().contains(q)) ins,
+    ];
+
+    final cleanUpper = BistUniverse.normalizeSymbol(_query);
+    final canAddCustomBist = _tab == 0 &&
+        cleanUpper.length >= 3 &&
+        cleanUpper.length <= 6 &&
+        RegExp(r'^[A-Z0-9]+$').hasMatch(cleanUpper) &&
+        !CryptoUniverse.contains(cleanUpper) &&
+        !bistCatalog.any((ins) => ins.symbol.toUpperCase() == cleanUpper);
+
+    final activeList = _tab == 0 ? filteredBist : filteredCrypto;
+    final quoteMap = _tab == 0 ? bistQuotesMap : cryptoQuotesMap;
+
+    return SafeArea(
+      child: FractionallySizedBox(
+        heightFactor: 0.88,
+        child: Padding(
+          padding: EdgeInsets.fromLTRB(16, 10, 16, MediaQuery.viewInsetsOf(context).bottom + 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: p.border,
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Piyasa Kataloğu & Favoriler',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  IconButton(
+                    key: const Key('btn_close_universe_browser'),
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  _FilterPillChip(
+                    key: const Key('sheet_tab_bist'),
+                    label: 'BIST (${bistCatalog.length}) · ₺',
+                    selected: _tab == 0,
+                    onTap: () => setState(() => _tab = 0),
+                  ),
+                  const SizedBox(width: 8),
+                  _FilterPillChip(
+                    key: const Key('sheet_tab_crypto'),
+                    label: 'Kripto (${CryptoUniverse.instruments.length}) · \$',
+                    selected: _tab == 1,
+                    onTap: () => setState(() => _tab = 1),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              TextField(
+                key: const Key('field_universe_search'),
+                controller: _searchCtrl,
+                onChanged: (v) => setState(() => _query = v),
+                decoration: InputDecoration(
+                  hintText: _tab == 0
+                      ? 'Hisse kodu veya adı ara (ör. THYAO, FROTO)…'
+                      : 'Listedeki 10 kripto arasında ara (ör. BTC, ONDO)…',
+                  prefixIcon: const Icon(Icons.search, size: 19),
+                  suffixIcon: _query.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.clear, size: 18),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            setState(() => _query = '');
+                          },
+                        )
+                      : null,
+                  isDense: true,
+                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Card(
+                child: Column(
+                  children: [
+                    SwitchListTile.adaptive(
+                      key: const Key('switch_sheet_scan_all_bist'),
+                      dense: true,
+                      title: Text('Tüm BIST hisselerini tara (${bistCatalog.length})',
+                          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                      value: state.settings.scanAllBistUniverse,
+                      onChanged: controller.toggleScanAllBistUniverse,
+                    ),
+                    const Divider(height: 1),
+                    SwitchListTile.adaptive(
+                      key: const Key('switch_sheet_scan_only_favorites'),
+                      dense: true,
+                      title: const Text('Yalnızca favori varlıkları tara',
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
+                      value: state.settings.scanOnlyFavorites,
+                      onChanged: controller.toggleScanOnlyFavorites,
+                    ),
+                  ],
+                ),
+              ),
+              if (canAddCustomBist) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: p.accentSoft,
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: p.accent.withValues(alpha: 0.4)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '$cleanUpper · Özel BIST hissesi ekle ve favorile',
+                          style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: p.accent),
+                        ),
+                      ),
+                      FilledButton(
+                        key: const Key('btn_add_custom_bist'),
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(0, 34),
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                        ),
+                        onPressed: () async {
+                          await controller.addCustomBistSymbol(cleanUpper);
+                        },
+                        child: const Text('Ekle', style: TextStyle(fontSize: 12)),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              if (_tab == 1) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Kripto taraması ve fiyat ekranı yalnızca belirlediğin 10 kripto için aktiftir (\$).',
+                  style: TextStyle(fontSize: 11.5, color: p.textDim),
+                ),
+              ],
+              const SizedBox(height: 8),
+              Expanded(
+                child: activeList.isEmpty
+                    ? Center(
+                        child: Text(
+                          'Aramayla eşleşen varlık bulunamadı.',
+                          style: TextStyle(fontSize: 13, color: p.textDim),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: activeList.length,
+                        separatorBuilder: (_, _) => Divider(height: 1, color: p.border.withValues(alpha: 0.35)),
+                        itemBuilder: (ctx, idx) {
+                          final ins = activeList[idx];
+                          final symKey = ins.symbol.toUpperCase();
+                          final quote = quoteMap[symKey];
+                          final isFav = state.settings.isFavorite(symKey);
+                          final isLoading = _loadingSymbols.contains(symKey);
+                          final chg = quote?.changePct ?? 0.0;
+                          final chgColor = chg > 0.005
+                              ? p.profit
+                              : (chg < -0.005 ? p.loss : p.neutral);
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            child: Row(
+                              children: [
+                                SymbolAvatarBadge(instrument: ins, size: 36),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        ins.short,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                                      ),
+                                      Text(
+                                        ins.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(fontSize: 11.5, color: p.textDim),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                if (quote != null)
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      Text(
+                                        Fmt.priceWithCurrency(quote.lastPrice, ins.market),
+                                        style: const TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w800,
+                                          fontFeatures: [FontFeature.tabularFigures()],
+                                        ),
+                                      ),
+                                      Text(
+                                        Fmt.pct(chg, decimals: 2, signed: true),
+                                        style: TextStyle(
+                                          fontSize: 11.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: chgColor,
+                                          fontFeatures: const [FontFeature.tabularFigures()],
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                else
+                                  FilledButton.tonal(
+                                    key: Key('btn_sheet_fetch_${ins.symbol}'),
+                                    style: FilledButton.styleFrom(
+                                      minimumSize: const Size(0, 32),
+                                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                    ),
+                                    onPressed: isLoading ? null : () => _fetchOne(controller, ins),
+                                    child: isLoading
+                                        ? const SizedBox(
+                                            width: 14,
+                                            height: 14,
+                                            child: CircularProgressIndicator(strokeWidth: 2),
+                                          )
+                                        : Text(
+                                            'Fiyatı Gör (${Fmt.currencySymbol(ins.market)})',
+                                            style: const TextStyle(fontSize: 11.5),
+                                          ),
+                                  ),
+                                const SizedBox(width: 4),
+                                IconButton(
+                                  key: Key('btn_sheet_fav_${ins.symbol}'),
+                                  onPressed: () => controller.toggleFavorite(ins),
+                                  tooltip: isFav ? 'Favorilerden çıkar' : 'Favorilere ekle',
+                                  visualDensity: VisualDensity.compact,
+                                  constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
+                                  padding: EdgeInsets.zero,
+                                  icon: Icon(
+                                    isFav ? Icons.star_rounded : Icons.star_outline_rounded,
+                                    size: 20,
+                                    color: isFav ? Colors.amber : p.textDim,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );

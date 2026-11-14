@@ -31,7 +31,13 @@ class Fmt {
     return number(v, decimals: d);
   }
 
-  static String currency(Market market) => market == Market.bist ? 'TL' : 'USDT';
+  static String currency(Market market) => market == Market.bist ? 'TL' : 'USD';
+
+  /// Piyasa para birimi simgesi: BIST → ₺, Kripto → $.
+  static String currencySymbol(Market market) => market == Market.bist ? '₺' : '\$';
+
+  /// Para birimi simgesiyle biçimlendirilmiş fiyat: BIST → ₺313,75, Kripto → $73.506.
+  static String priceWithCurrency(double v, Market market) => '${currencySymbol(market)}${price(v, market)}';
 
   /// `%12,5` biçimi; [signed] ise `+%1,2` / `-%0,8`.
   static String pct(double v, {int decimals = 1, bool signed = false}) {
@@ -376,7 +382,7 @@ class PriceLadder extends StatelessWidget {
           children: [
             Text(title, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: color)),
             Text(
-              Fmt.price(value, market),
+              Fmt.priceWithCurrency(value, market),
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w800,
@@ -388,8 +394,8 @@ class PriceLadder extends StatelessWidget {
         );
 
     return Semantics(
-      label: 'Stop ${Fmt.price(stop, market)}, giriş ${Fmt.price(entry, market)}, '
-          'birinci hedef ${Fmt.price(target1, market)}, ana hedef ${Fmt.price(target2, market)}',
+      label: 'Stop ${Fmt.priceWithCurrency(stop, market)}, giriş ${Fmt.priceWithCurrency(entry, market)}, '
+          'birinci hedef ${Fmt.priceWithCurrency(target1, market)}, ana hedef ${Fmt.priceWithCurrency(target2, market)}',
       child: ExcludeSemantics(
         child: Column(
           mainAxisSize: MainAxisSize.min,

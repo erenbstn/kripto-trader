@@ -299,6 +299,9 @@ class PusulaController extends StateNotifier<PusulaAppState> {
   /// Canlı izlenen başlıca BIST hisseleri ve endeks.
   static const List<Instrument> watchedBistInstruments = [BistUniverse.benchmark, ...kWatchedBistStocks];
 
+  /// Kullanıcının ayarlarına göre tam Borsa İstanbul (BIST) hisse kataloğu.
+  List<Instrument> get bistCatalog => buildBistCatalog(state.settings);
+
   Future<void> _init() async {
     await _hydrateFromStorage();
     try {
@@ -1210,6 +1213,210 @@ class PusulaController extends StateNotifier<PusulaAppState> {
 
   Future<void> toggleLiveMonitor(bool value) async {
     await _applySettings(state.settings.copyWith(liveMonitorEnabled: value));
+  }
+
+  /// Seçili hisseyi veya kripto varlığı favorilere ekler / çıkarır.
+  ///
+  /// Kripto tarafında yalnızca kullanıcının belirlediği 10 coin desteklenir.
+  Future<void> toggleFavorite(Instrument instrument) async {
+    final isBist = instrument.market == Market.bist;
+    final clean = isBist
+        ? BistUniverse.normalizeSymbol(instrument.symbol)
+        : instrument.symbol.trim().toUpperCase();
+    if (clean.isEmpty || clean == BistUniverse.benchmark.symbol) return;
+    if (!isBist && !CryptoUniverse.contains(clean)) {
+      _showToast('Yalnızca listedeki 10 kripto favoriye eklenebilir', positive: false);
+      return;
+    }
+
+    final current = List<String>.from(state.settings.favoriteSymbols);
+    final existed = current.any((s) => s.trim().toUpperCase() == clean);
+    if (existed) {
+      current.removeWhere((s) => s.trim().toUpperCase() == clean);
+    } else {
+      current.add(clean);
+    }
+
+    var customBist = List<String>.from(state.settings.customBistSymbols);
+    if (isBist &&
+        !existed &&
+        BistUniverse.nameOf(clean) == null &&
+        !customBist.any((s) => s.trim().toUpperCase() == clean)) {
+      customBist.add(clean);
+    }
+
+    await _applySettings(
+      state.settings.copyWith(
+        favoriteSymbols: List.unmodifiable(current),
+        customBistSymbols: List.unmodifiable(customBist),
+      ),
+    );
+    _showToast(existed ? '${instrument.short} favorilerden çıkarıldı' : '${instrument.short} favorilere eklendi');
+
+    if (!existed && enableLiveNetwork && !demoSeed && mounted) {
+      final hasQuote = (isBist ? state.bistQuotes : state.cryptoQuotes)
+          .any((q) => q.instrument.symbol.toUpperCase() == clean);
+      if (!hasQuote) {
+        unawaited(fetchSingleQuote(isBist ? BistUniverse.instrumentFor(clean) : instrument));
+      }
+    }
+  }
+
+  /// Kullanıcının elle girdiği bir BIST hisse kodunu listeye ve favorilere ekler.
+  Future<bool> addCustomBistSymbol(String rawSymbol) async {
+    final clean = BistUniverse.normalizeSymbol(rawSymbol);
+    if (clean.length < 3 ||
+        clean.length > 6 ||
+        !RegExp(r'^[A-Z0-9]+$').hasMatch(clean) ||
+        CryptoUniverse.contains(clean)) {
+      _showToast('Geçerli bir BIST hisse kodu girin (ör. THYAO)', positive: false);
+      return false;
+    }
+
+    final favs = List<String>.from(state.settings.favoriteSymbols);
+    if (!favs.any((s) => s.trim().toUpperCase() == clean)) {
+      favs.add(clean);
+    }
+    final custom = List<String>.from(state.settings.customBistSymbols);
+    if (!custom.any((s) => s.trim().toUpperCase() == clean)) {
+      custom.add(clean);
+    }
+
+    await _applySettings(
+      state.settings.copyWith(
+        favoriteSymbols: List.unmodifiable(favs),
+        customBistSymbols: List.unmodifiable(custom),
+      ),
+    );
+    final ins = BistUniverse.instrumentFor(clean);
+    _showToast('${ins.short} eklendi');
+
+    if (enableLiveNetwork && !demoSeed && mounted) {
+      unawaited(fetchSingleQuote(ins));
+    }
+    return true;
+  }
+
+  Future<void> toggleScanOnlyFavorites(bool value) async {
+    await _applySettings(state.settings.copyWith(scanOnlyFavorites: value));
+    _showToast(value ? 'Tarama: Yalnızca favori varlıklar' : 'Tarama: Tüm seçili varlıklar');
+  }
+
+  Future<void> toggleScanAllBistUniverse(bool value) async {
+    await _applySettings(state.settings.copyWith(scanAllBistUniverse: value));
+    _showToast(value ? 'BIST: Tüm hisse kataloğu taranacak' : 'BIST: Hızlı izleme listesi');
+  }
+
+  static String _formatQuickPrice(double v, Market m) {
+    final prefix = m == Market.bist ? '₺' : '\$';
+    final d = m == Market.bist ? 2 : (v >= 1000 ? 0 : (v >= 100 ? 2 : (v >= 1 ? 3 : 4)));
+    return '$prefix${v.toStringAsFixed(d).replaceAll('.', ',')}';
+  }
+
+  /// Grafik okumaya gerek kalmadan tek bir BIST hissesi veya izinli kriptonun son fiyatını getirir.
+  Future<LiveMarketQuote?> fetchSingleQuote(Instrument instrument) async {
+    final isBist = instrument.market == Market.bist;
+    final clean = isBist
+        ? BistUniverse.normalizeSymbol(instrument.symbol)
+        : instrument.symbol.trim().toUpperCase();
+    if (clean.isEmpty) return null;
+    if (!isBist && !CryptoUniverse.contains(clean)) {
+      _showToast('Yalnızca listedeki 10 kripto sorgulanabilir', positive: false);
+      return null;
+    }
+
+    final resolved = isBist ? BistUniverse.instrumentFor(clean) : instrument;
+    if (demoSeed) {
+      for (final q in isBist ? state.bistQuotes : state.cryptoQuotes) {
+        if (q.instrument.symbol.toUpperCase() == clean) {
+          _showToast('${resolved.short}: ${_formatQuickPrice(q.lastPrice, resolved.market)}');
+          return q;
+        }
+      }
+      _showToast('Örnek modda ${resolved.short} için ek veri indirilemez', positive: false);
+      return null;
+    }
+
+    PusulaHttpFetcher? fetcher;
+    try {
+      final MarketDataService data;
+      if (dataServiceFactory != null) {
+        data = dataServiceFactory!();
+      } else {
+        fetcher = PusulaHttpFetcher();
+        data = MarketDataService(
+          providers: [BinanceProvider(fetcher), YahooProvider(fetcher), IsYatirimProvider(fetcher)],
+          cache: storage.candleCache,
+          limiter: RateLimiter(minGap: const Duration(milliseconds: 50), clock: _clock),
+          clock: _clock,
+        );
+      }
+
+      final interval = isBist ? BarInterval.d1 : BarInterval.h1;
+      final s = await data.candles(resolved, interval, limit: 30, forceRefresh: true);
+      if (s.closed.isEmpty) {
+        _showToast('${resolved.short} için fiyat bulunamadı', positive: false);
+        return null;
+      }
+
+      final now = _clock().toUtc();
+      final c = s.closed;
+      final double ref;
+      if (isBist) {
+        final hasIntraday = s.forming != null;
+        ref = hasIntraday ? c.last.close : (c.length >= 2 ? c[c.length - 2].close : c.last.close);
+      } else {
+        ref = c.length > 24 ? c[c.length - 25].close : c.first.close;
+      }
+
+      final quote = LiveMarketQuote(
+        instrument: resolved,
+        lastPrice: s.lastPrice,
+        changePct: ref > 0 ? (s.lastPrice / ref - 1.0) * 100.0 : 0.0,
+        sourceLabel: isBist
+            ? (s.source == 'isyatirim' ? 'İş Yatırım (gün sonu)' : 'Yahoo Finance')
+            : (s.source == 'binance_futures'
+                ? 'Binance Futures'
+                : (s.source == 'yahoo' ? 'Yahoo Finance' : 'Binance Spot')),
+        ageMinutes: s.ageAt(now).inMinutes.clamp(0, 99999),
+        isStale: s.stale,
+      );
+
+      if (!mounted) return quote;
+      if (isBist) {
+        final updated = [
+          for (final q in state.bistQuotes)
+            if (q.instrument.symbol.toUpperCase() != clean) q,
+        ];
+        final insertIdx = (updated.isNotEmpty && updated.first.instrument.symbol == BistUniverse.benchmark.symbol) ? 1 : 0;
+        updated.insert(insertIdx, quote);
+        state = state.copyWith(
+          bistQuotes: updated,
+          statusMessage: state.statusMessage,
+          scanProgress: state.scanProgress,
+        );
+      } else {
+        final updated = [
+          for (final q in state.cryptoQuotes)
+            if (q.instrument.symbol.toUpperCase() != clean) q,
+          quote,
+        ];
+        state = state.copyWith(
+          cryptoQuotes: updated,
+          statusMessage: state.statusMessage,
+          scanProgress: state.scanProgress,
+        );
+      }
+      _showToast('${resolved.short}: ${_formatQuickPrice(quote.lastPrice, resolved.market)}');
+      return quote;
+    } catch (e) {
+      if (mounted) {
+        _showToast('${resolved.short} fiyatı alınamadı (${e.runtimeType})', positive: false);
+      }
+      return null;
+    } finally {
+      fetcher?.close();
+    }
   }
 
   Future<void> updateNotificationChannels({
