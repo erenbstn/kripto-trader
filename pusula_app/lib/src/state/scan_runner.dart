@@ -128,7 +128,12 @@ class ScanRunner {
         clock: _clock,
       );
       final report = await generator.generate(
-        newCandidates: [for (final s in activeBefore) if (s.isWeeklyProposal) s],
+        newCandidates: [
+          for (final s in activeBefore)
+            if (s.isWeeklyProposal &&
+                (!settings.scanOnlyFavorites || settings.isFavorite(s.instrument.symbol)))
+              s,
+        ],
         appetite: settings.riskAppetite,
         totalBudget: settings.budgetAmount,
         currentPrices: {
@@ -179,9 +184,7 @@ class ScanRunner {
         instrument: ins,
         lastPrice: s.lastPrice,
         changePct: ref > 0 ? (s.lastPrice / ref - 1.0) * 100.0 : 0.0,
-        sourceLabel: s.source == 'binance_futures'
-            ? 'Binance Futures'
-            : (s.source == 'yahoo' ? 'Yahoo Finance' : 'Binance Spot'),
+        sourceLabel: s.source == 'yahoo' ? 'Yahoo Finance' : 'Binance Spot',
         ageMinutes: s.ageAt(now).inMinutes.clamp(0, 99999),
         isStale: s.stale,
       ));

@@ -62,18 +62,14 @@ void main() {
       expect(f.calls.single.queryParameters['symbol'], 'BTCUSDT');
     });
 
-    test('spot 400 dönerse diğer spot sunucularını denemeden futures ucuna geçer', () async {
-      final f = FakeFetcher(
-          (u) => u.path.startsWith('/api/') ? HttpFetchException('HTTP 400', status: 400) : rows());
-      final s = await BinanceProvider(f).fetchCandles(const Instrument.crypto('ONDOUSDT'), BarInterval.h1, limit: 50, now: now);
-      expect(s.source, 'binance_futures');
-      expect(f.calls.length, 2);
-    });
-
-    test('futures öncelikli semboller önce futures ucunda aranır', () async {
-      final f = FakeFetcher((_) => rows());
-      await BinanceProvider(f).fetchCandles(const Instrument.crypto('XAGUSDT'), BarInterval.h1, limit: 50, now: now);
-      expect(f.calls.first.host, 'fapi.binance.com');
+    test('yalnızca Binance Spot uçlarını sorgular ve 400/404 durumunda futures uca geçmez', () async {
+      final f = FakeFetcher((_) => HttpFetchException('HTTP 400', status: 400));
+      await expectLater(
+        () => BinanceProvider(f).fetchCandles(const Instrument.crypto('XAGUSDT'), BarInterval.h1, limit: 50, now: now),
+        throwsA(isA<ProviderException>()),
+      );
+      expect(f.calls.length, 1);
+      expect(f.calls.every((u) => u.host != 'fapi.binance.com' && u.path == '/api/v3/klines'), isTrue);
     });
 
     test('ağ hatasında sıradaki sunucuya geçer', () async {

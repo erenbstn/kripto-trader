@@ -92,9 +92,20 @@ class PusulaAppState {
     return null;
   }
 
-  /// Kısa vade niteliğindeki açık sinyaller.
+  /// Kısa vade (günlük) niteliğindeki açık sinyaller.
   List<SignalRecord> get activeShortTermSignals =>
       [for (final s in activeSignals) if (!s.isWeeklyProposal) s];
+
+  /// Seçili moda göre (`Otomatik` vs `Kendim Seçeyim`) süzülen aktif sinyaller.
+  List<SignalRecord> get effectiveActiveSignals => settings.scanOnlyFavorites
+      ? [for (final s in activeSignals) if (settings.isFavorite(s.instrument.symbol)) s]
+      : activeSignals;
+
+  /// Seçili moda göre süzülen günlük / kısa vade aktif sinyalleri.
+  List<SignalRecord> get effectiveShortTermSignals => [
+        for (final s in activeShortTermSignals)
+          if (!settings.scanOnlyFavorites || settings.isFavorite(s.instrument.symbol)) s,
+      ];
 
   /// 3D / 2D halka grafik için bütçe dilimlerini üretir.
   List<DonutSliceData> get donutSlices {
@@ -493,19 +504,21 @@ class PusulaController extends StateNotifier<PusulaAppState> {
 
     const thyao = Instrument.bist('THYAO', name: 'Türk Hava Yolları');
     const asels = Instrument.bist('ASELS', name: 'Aselsan');
+    const tuprs = Instrument.bist('TUPRS', name: 'Tüpraş');
     const akbnk = Instrument.bist('AKBNK', name: 'Akbank');
     const sol = Instrument.crypto('SOLUSDT', name: 'Solana');
     const btc = Instrument.crypto('BTCUSDT', name: 'Bitcoin');
+    const ondo = Instrument.crypto('ONDOUSDT', name: 'Ondo');
     const link = Instrument.crypto('LINKUSDT', name: 'Chainlink');
 
-    // Güncel piyasa seviyeleriyle kalibre edilmiş başlangıç sinyalleri:
-    // THYAO ~ 313,75 TL, ASELS ~ 337,00 TL, SOL ~ 82,90 USDT, BTC ~ 73.506 USDT, LINK ~ 10,30 USDT, AKBNK ~ 70,70 TL.
+    // Güncel piyasa seviyeleriyle kalibre edilmiş başlangıç sinyalleri (Sadece Spot):
+    // THYAO ~ 313,75 TL, ASELS ~ 337,00 TL, TUPRS ~ 331,25 TL, SOL ~ 82,90 $, BTC ~ 73.506 $, ONDO ~ 0,3628 $.
     final sThyao = _makeSeedSignal(
       id: 'sig_thyao_v2',
       instrument: thyao,
       interval: BarInterval.d1,
       strategy: SetupType.breakout20,
-      rationale: 'Kapanmış günlük mumda 310,00 TL direnci hacim artışıyla geçildi; son fiyat 313,75 TL.',
+      rationale: '310,00 TL direnci hacimli kırıldı · Uzun vade trend.',
       entryZoneLow: 312.50,
       entryZoneHigh: 315.00,
       entryPrice: 313.75,
@@ -517,6 +530,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       dataSource: 'Yahoo Finance',
       dataAgeMinutes: 15,
       createdAt: now.subtract(const Duration(hours: 2)),
+      isWeeklyProposal: true,
     );
 
     final sAsels = _makeSeedSignal(
@@ -524,7 +538,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       instrument: asels,
       interval: BarInterval.h1,
       strategy: SetupType.bullFlag,
-      rationale: 'Güçlü yükseliş direği sonrası bayrak üst bandı kapanmış mumla geçildi; son fiyat 337,00 TL.',
+      rationale: 'Bayrak üst bandı kırılımı · Momentum güçlü.',
       entryZoneLow: 335.50,
       entryZoneHigh: 338.50,
       entryPrice: 337.00,
@@ -538,12 +552,32 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       createdAt: now.subtract(const Duration(hours: 3)),
     );
 
+    final sTuprs = _makeSeedSignal(
+      id: 'sig_tuprs_v2',
+      instrument: tuprs,
+      interval: BarInterval.d1,
+      strategy: SetupType.reclaimMa20,
+      rationale: 'Günlük MA20 üzerinde güçlü kapanış.',
+      entryZoneLow: 330.00,
+      entryZoneHigh: 332.50,
+      entryPrice: 331.25,
+      stopPrice: 318.00,
+      target1: 344.50,
+      target2: 357.75,
+      rewardRisk: 2.0,
+      confidenceTotal: 83,
+      dataSource: 'Yahoo Finance',
+      dataAgeMinutes: 15,
+      createdAt: now.subtract(const Duration(hours: 4)),
+      isWeeklyProposal: true,
+    );
+
     final sSol = _makeSeedSignal(
       id: 'sig_sol_v2',
       instrument: sol,
       interval: BarInterval.h1,
       strategy: SetupType.oversoldBounce,
-      rationale: 'Saatlik RSI aşırı satım bölgesinden hacimli dönüş teyidi; güncel fiyat 82,90 USDT.',
+      rationale: 'Saatlik RSI dönüş teyidi · Spot hacim artışı.',
       entryZoneLow: 82.40,
       entryZoneHigh: 83.30,
       entryPrice: 82.90,
@@ -562,7 +596,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       instrument: btc,
       interval: BarInterval.h1,
       strategy: SetupType.vwapBreakout,
-      rationale: 'Seans VWAP seviyesi hacimle geri kazanıldı; güncel fiyat 73.506 USDT.',
+      rationale: 'VWAP üzeri hacimli spot kırılım.',
       entryZoneLow: 73200.0,
       entryZoneHigh: 73750.0,
       entryPrice: 73506.0,
@@ -576,12 +610,31 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       createdAt: now.subtract(const Duration(hours: 1)),
     );
 
+    final sOndo = _makeSeedSignal(
+      id: 'sig_ondo_v2',
+      instrument: ondo,
+      interval: BarInterval.h1,
+      strategy: SetupType.orb,
+      rationale: 'Spot açılış aralığı yukarı kırılımı.',
+      entryZoneLow: 0.3590,
+      entryZoneHigh: 0.3650,
+      entryPrice: 0.3628,
+      stopPrice: 0.3450,
+      target1: 0.3806,
+      target2: 0.3984,
+      rewardRisk: 2.0,
+      confidenceTotal: 79,
+      dataSource: 'Binance Spot',
+      dataAgeMinutes: 1,
+      createdAt: now.subtract(const Duration(minutes: 30)),
+    );
+
     final sLinkClosed = _makeSeedSignal(
       id: 'sig_link_closed_v2',
       instrument: link,
       interval: BarInterval.m15,
       strategy: SetupType.orb,
-      rationale: 'Açılış aralığı üst bandı hacimli geçildi (güncel seviye ~10,30 USDT).',
+      rationale: 'Açılış aralığı üst bandı hacimli geçildi.',
       entryZoneLow: 9.68,
       entryZoneHigh: 9.76,
       entryPrice: 9.72,
@@ -604,7 +657,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       instrument: akbnk,
       interval: BarInterval.h1,
       strategy: SetupType.reclaimMa20,
-      rationale: 'Saatlik MA20 üzerinde kapanış teyidi (güncel seviye 70,70 TL).',
+      rationale: 'Saatlik MA20 üzerinde kapanış teyidi.',
       entryZoneLow: 69.50,
       entryZoneHigh: 69.90,
       entryPrice: 69.75,
@@ -624,12 +677,12 @@ class PusulaController extends StateNotifier<PusulaAppState> {
 
     const allocator = PortfolioWeightAllocator();
     final allocation = allocator.allocate(
-      [sThyao, sAsels, sSol, sBtc],
+      [sThyao, sTuprs, sAsels, sSol, sOndo, sBtc],
       appetite: settings.riskAppetite,
       totalBudget: settings.budgetAmount,
     );
 
-    final allSigs = [sSol, sBtc, sThyao, sAsels, sLinkClosed, sAkbnkClosed];
+    final allSigs = [sSol, sOndo, sBtc, sThyao, sTuprs, sAsels, sLinkClosed, sAkbnkClosed];
     final activeSigs = allSigs.where((s) => s.isActive).toList();
 
     final initialCryptoQuotes = <LiveMarketQuote>[
@@ -685,7 +738,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
         instrument: Instrument.crypto('XAGUSDT', name: 'Gümüş'),
         lastPrice: 51.53,
         changePct: 0.25,
-        sourceLabel: 'Binance Futures',
+        sourceLabel: 'Yahoo Finance Spot',
         ageMinutes: 1,
         isStale: false,
       ),
@@ -709,7 +762,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
         instrument: Instrument.crypto('SIRENUSDT', name: 'Siren'),
         lastPrice: 0.0253,
         changePct: 0.20,
-        sourceLabel: 'Binance Futures',
+        sourceLabel: 'Binance Spot',
         ageMinutes: 1,
         isStale: false,
       ),
@@ -935,9 +988,6 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       ProviderHealth('binance_spot', 'Binance Spot (Kripto Birincil)')
         ..lastSuccess = now.subtract(const Duration(seconds: 40))
         ..successCount = 10,
-      ProviderHealth('binance_futures', 'Binance Futures (XAG/SIREN ve Fonlama)')
-        ..lastSuccess = now.subtract(const Duration(minutes: 1))
-        ..successCount = 2,
       ProviderHealth('yahoo_finance', 'Yahoo Finance .IS / -USD (~15 dk gecikmeli)')
         ..lastSuccess = now.subtract(const Duration(minutes: 2))
         ..successCount = 17,
@@ -1151,8 +1201,12 @@ class PusulaController extends StateNotifier<PusulaAppState> {
 
   Future<void> _applySettings(AppSettings next) async {
     const allocator = PortfolioWeightAllocator();
+    final filteredWeekly = [
+      for (final s in state.activeWeeklySignals)
+        if (!next.scanOnlyFavorites || next.isFavorite(s.instrument.symbol)) s,
+    ];
     final allocation = allocator.allocate(
-      state.activeWeeklySignals,
+      filteredWeekly,
       appetite: next.riskAppetite,
       totalBudget: next.budgetAmount,
     );
@@ -1299,12 +1353,28 @@ class PusulaController extends StateNotifier<PusulaAppState> {
 
   Future<void> toggleScanOnlyFavorites(bool value) async {
     await _applySettings(state.settings.copyWith(scanOnlyFavorites: value));
-    _showToast(value ? 'Tarama: Yalnızca favori varlıklar' : 'Tarama: Tüm seçili varlıklar');
+    _showToast(value ? 'Mod: Kendim Seçeyim' : 'Mod: Otomatik Seçsin');
   }
 
   Future<void> toggleScanAllBistUniverse(bool value) async {
     await _applySettings(state.settings.copyWith(scanAllBistUniverse: value));
-    _showToast(value ? 'BIST: Tüm hisse kataloğu taranacak' : 'BIST: Hızlı izleme listesi');
+    _showToast(value ? 'BIST: Tüm katalog' : 'BIST: Hızlı liste');
+  }
+
+  /// Portföy seçim modunu günceller: [userSelected] = true (Kendim Seçeyim) | false (Otomatik Seçsin).
+  Future<void> setPortfolioSelectionMode({required bool userSelected}) async {
+    await _applySettings(
+      state.settings.copyWith(
+        scanOnlyFavorites: userSelected,
+        scanAllBistUniverse: userSelected ? state.settings.scanAllBistUniverse : true,
+      ),
+    );
+    _showToast(userSelected ? 'Kendim Seçeyim (${state.settings.favoriteSymbols.length} varlık)' : 'Otomatik Seçsin (Tüm Evren)');
+  }
+
+  Future<void> updateUsdTryRate(double rate) async {
+    if (rate <= 1.0) return;
+    await _applySettings(state.settings.copyWith(usdTryRate: rate));
   }
 
   static String _formatQuickPrice(double v, Market m) {
@@ -1375,9 +1445,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
         changePct: ref > 0 ? (s.lastPrice / ref - 1.0) * 100.0 : 0.0,
         sourceLabel: isBist
             ? (s.source == 'isyatirim' ? 'İş Yatırım (gün sonu)' : 'Yahoo Finance')
-            : (s.source == 'binance_futures'
-                ? 'Binance Futures'
-                : (s.source == 'yahoo' ? 'Yahoo Finance' : 'Binance Spot')),
+            : (s.source == 'yahoo' ? 'Yahoo Finance' : 'Binance Spot'),
         ageMinutes: s.ageAt(now).inMinutes.clamp(0, 99999),
         isStale: s.stale,
       );

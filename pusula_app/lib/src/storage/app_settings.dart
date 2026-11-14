@@ -27,6 +27,7 @@ class AppSettings {
     this.customBistSymbols = const [],
     this.scanOnlyFavorites = false,
     this.scanAllBistUniverse = false,
+    this.usdTryRate = 36.50,
   });
 
   /// Kullanıcının referans portföy bütçesi (TL). Yalnızca ağırlık tutarı gösterimi içindir.
@@ -75,8 +76,14 @@ class AppSettings {
   /// true ise BIST tarafında tüm Borsa İstanbul hisse kataloğu taranır.
   final bool scanAllBistUniverse;
 
+  /// Kripto ($) emir miktarı hesabı için referans USD/TRY kuru.
+  final double usdTryRate;
+
   /// Animasyonların sadeleştirilmesi gerekiyor mu? (Kısıt 10).
   bool get shouldSimplifyAnimations => reduceAnimations || batterySaverMode;
+
+  /// true = Kendim Seçeyim modu; false = Otomatik Seçim (tüm evren).
+  bool get isUserSelectedMode => scanOnlyFavorites;
 
   bool isFavorite(String symbol) {
     final clean = symbol.trim().toUpperCase();
@@ -106,6 +113,7 @@ class AppSettings {
     List<String>? customBistSymbols,
     bool? scanOnlyFavorites,
     bool? scanAllBistUniverse,
+    double? usdTryRate,
   }) =>
       AppSettings(
         budgetAmount: budgetAmount ?? this.budgetAmount,
@@ -129,6 +137,7 @@ class AppSettings {
         customBistSymbols: customBistSymbols ?? this.customBistSymbols,
         scanOnlyFavorites: scanOnlyFavorites ?? this.scanOnlyFavorites,
         scanAllBistUniverse: scanAllBistUniverse ?? this.scanAllBistUniverse,
+        usdTryRate: usdTryRate ?? this.usdTryRate,
       );
 
   Map<String, Object?> toJson() => {
@@ -153,6 +162,7 @@ class AppSettings {
         'customBistSymbols': customBistSymbols,
         'scanOnlyFavorites': scanOnlyFavorites,
         'scanAllBistUniverse': scanAllBistUniverse,
+        'usdTryRate': usdTryRate,
       };
 
   static List<String>? _readStringList(Object? raw) {
@@ -190,6 +200,7 @@ class AppSettings {
         customBistSymbols: _readStringList(j['customBistSymbols']) ?? const [],
         scanOnlyFavorites: (j['scanOnlyFavorites'] as bool?) ?? false,
         scanAllBistUniverse: (j['scanAllBistUniverse'] as bool?) ?? false,
+        usdTryRate: (j['usdTryRate'] as num?)?.toDouble() ?? 36.50,
       );
 }
 

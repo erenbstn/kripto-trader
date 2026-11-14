@@ -131,8 +131,8 @@ class _Donut3DChartState extends State<Donut3DChart> {
             Expanded(
               child: Text(
                 widget.flat2D
-                    ? 'Bütçe Ağırlık Halkası (2D Sade Mod)'
-                    : '3D Bütçe Ağırlık Halkası (Döndürmek için sürükleyin)',
+                    ? 'Portföy Dağılımı · 2D Sade Mod'
+                    : 'Portföy Dağılımı · Spot',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -147,7 +147,7 @@ class _Donut3DChartState extends State<Donut3DChart> {
                 borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
-                widget.flat2D ? '2D · Pil Dostu' : '3D Etkileşimli',
+                widget.flat2D ? '2D' : '3D Spot',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,

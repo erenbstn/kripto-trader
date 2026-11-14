@@ -32,6 +32,7 @@ class YahooProvider implements MarketDataProvider {
 
   static String yahooSymbol(Instrument i) {
     if (i.market == Market.bist) return '${i.symbol}.IS';
+    if (i.symbol == 'XAGUSDT') return 'XAGUSD=X';
     return '${i.short}-USD';
   }
 

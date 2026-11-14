@@ -6,24 +6,18 @@ import 'errors.dart';
 import 'http_fetcher.dart';
 import 'provider.dart';
 
-/// Binance herkese açık piyasa verisi (anahtarsız, gecikmesiz). Yalnızca kripto.
-/// Spot'ta bulunmayan semboller için vadeli (futures) uca düşer.
+/// Binance herkese açık spot piyasa verisi (anahtarsız, gecikmesiz). Yalnızca kripto spot.
 class BinanceProvider implements MarketDataProvider {
-  BinanceProvider(this._http, {Set<String>? futuresFirst})
-      : futuresFirst = futuresFirst ?? const {'XAGUSDT', 'SIRENUSDT'};
+  BinanceProvider(this._http);
 
   final HttpFetcher _http;
 
-  /// Spot'ta listelenmediği bilinen, önce futures ucunda aranan semboller.
-  final Set<String> futuresFirst;
-
   static const spotHosts = ['data-api.binance.vision', 'api.binance.com', 'api1.binance.com'];
-  static const futuresHosts = ['fapi.binance.com'];
 
   @override
   String get id => 'binance';
   @override
-  String get label => 'Binance';
+  String get label => 'Binance Spot';
   @override
   Duration delayFor(Market market) => Duration.zero;
   @override
@@ -40,29 +34,24 @@ class BinanceProvider implements MarketDataProvider {
       throw ProviderException(id, 'desteklenmeyen varlık: ${instrument.id}');
     }
     final lim = limit.clamp(1, 999) + 1; // +1: kapanmamış mum
-    final order = futuresFirst.contains(instrument.symbol) ? const [true, false] : const [false, true];
     Object? lastErr;
-    for (final futures in order) {
-      final hosts = futures ? futuresHosts : spotHosts;
-      final path = futures ? '/fapi/v1/klines' : '/api/v3/klines';
-      for (final host in hosts) {
-        final uri = Uri.https(host, path, {
-          'symbol': instrument.symbol,
-          'interval': interval.code,
-          'limit': '$lim',
-        });
-        try {
-          final body = await _http.getText(uri);
-          final series = _parse(body, instrument, interval, now, futures ? 'binance_futures' : 'binance');
-          if (!series.isEmpty || series.forming != null) return series;
-          lastErr = 'boş yanıt';
-        } on HttpFetchException catch (e) {
-          lastErr = e;
-          if (e.isRateLimited) throw ProviderException(id, 'hız sınırı (429)', rateLimited: true);
-          if (e.isNotFound) break; // sembol bu piyasada yok; diğer sunucuları deneme
-        } on FormatException catch (e) {
-          lastErr = 'biçim hatası: ${e.message}';
-        }
+    for (final host in spotHosts) {
+      final uri = Uri.https(host, '/api/v3/klines', {
+        'symbol': instrument.symbol,
+        'interval': interval.code,
+        'limit': '$lim',
+      });
+      try {
+        final body = await _http.getText(uri);
+        final series = _parse(body, instrument, interval, now, 'binance');
+        if (!series.isEmpty || series.forming != null) return series;
+        lastErr = 'boş yanıt';
+      } on HttpFetchException catch (e) {
+        lastErr = e;
+        if (e.isRateLimited) throw ProviderException(id, 'hız sınırı (429)', rateLimited: true);
+        if (e.isNotFound) break; // sembol Binance Spot'ta yok; yedek sağlayıcıya geç
+      } on FormatException catch (e) {
+        lastErr = 'biçim hatası: ${e.message}';
       }
     }
     throw ProviderException(id, 'veri alınamadı: $lastErr');

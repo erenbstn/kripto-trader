@@ -308,13 +308,13 @@ class DisclaimerBanner extends StatelessWidget {
                 TextSpan(
                   children: [
                     TextSpan(
-                      text: 'Yatırım tavsiyesi değildir. ',
+                      text: 'Sadece Spot · Yatırım tavsiyesi değildir',
                       style: TextStyle(fontWeight: FontWeight.w800, color: p.text),
                     ),
-                    const TextSpan(text: 'Pusula emir açmaz, anahtar kullanmaz; yalnızca yerel analiz üretir.'),
+                    const TextSpan(text: ' · Emir açmaz'),
                   ],
                 ),
-                style: TextStyle(fontSize: 12, height: 1.3, color: p.textDim),
+                style: TextStyle(fontSize: 11.5, height: 1.25, color: p.textDim),
               ),
             ),
           ],
@@ -340,9 +340,8 @@ class DataProvenanceBadge extends StatelessWidget {
   static String sourceName(String raw) {
     switch (raw) {
       case 'binance':
+      case 'binance_spot':
         return 'Binance Spot';
-      case 'binance_futures':
-        return 'Binance Futures';
       case 'yahoo':
         return 'Yahoo Finance';
       case 'isyatirim':

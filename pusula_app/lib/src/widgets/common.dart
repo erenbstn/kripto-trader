@@ -854,3 +854,473 @@ class SymbolAvatarBadge extends StatelessWidget {
     );
   }
 }
+
+/// Öneri ve sinyaller için zaman ufku (Sadece Spot).
+enum InvestmentHorizon {
+  daily('Günlük', 'Gün İçi · Spot'),
+  weekly('Haftalık', '1 Hafta · Spot'),
+  multiWeek('Birkaç Haftalık', '2–4 Hafta · Spot'),
+  monthlyLong('Aylık / Uzun Vade', '1+ Ay · Spot');
+
+  const InvestmentHorizon(this.label, this.shortDesc);
+
+  final String label;
+  final String shortDesc;
+}
+
+/// Bir sinyali/öneriyi günlük, haftalık, birkaç haftalık veya aylık/uzun vade sınıfına ayırır.
+InvestmentHorizon classifyHorizon(SignalRecord s) {
+  if (!s.isWeeklyProposal) {
+    return InvestmentHorizon.daily;
+  }
+  if (s.strategy == SetupType.breakout20 &&
+      (s.interval == BarInterval.d1 || s.instrument.symbol == 'BTCUSDT' || s.instrument.symbol == 'PAXGUSDT')) {
+    return InvestmentHorizon.monthlyLong;
+  }
+  if (s.strategy == SetupType.reclaimMa20 ||
+      (s.strategy == SetupType.bullFlag && (s.interval == BarInterval.h4 || s.interval == BarInterval.d1))) {
+    return InvestmentHorizon.multiWeek;
+  }
+  return InvestmentHorizon.weekly;
+}
+
+/// Bütçeye göre kesin TL alım tutarı ve alınacak/satılacak adet planı (Sadece Spot).
+class OrderSizingPlan {
+  const OrderSizingPlan({
+    required this.market,
+    required this.horizon,
+    required this.allocatedTry,
+    required this.buyQuantity,
+    required this.sellQtyTarget1,
+    required this.sellQtyTarget2,
+    required this.stopQty,
+    required this.entryPrice,
+    required this.target1,
+    required this.target2,
+    required this.stopPrice,
+  });
+
+  final Market market;
+  final InvestmentHorizon horizon;
+  final double allocatedTry;
+  final double buyQuantity;
+  final double sellQtyTarget1;
+  final double sellQtyTarget2;
+  final double stopQty;
+  final double entryPrice;
+  final double target1;
+  final double target2;
+  final double stopPrice;
+
+  static OrderSizingPlan fromSignal({
+    required SignalRecord signal,
+    required double allocatedTry,
+    required double usdTryRate,
+  }) {
+    final m = signal.instrument.market;
+    final entry = signal.entryPrice;
+    final safeTry = allocatedTry < 0 ? 0.0 : allocatedTry;
+    double buyQty = 0.0;
+    double t1Qty = 0.0;
+    double t2Qty = 0.0;
+
+    if (entry > 0 && safeTry > 0) {
+      if (m == Market.bist) {
+        buyQty = (safeTry / entry).floorToDouble();
+        if (buyQty >= 2) {
+          t1Qty = (buyQty / 2).ceilToDouble();
+          t2Qty = math.max(0.0, buyQty - t1Qty);
+        } else {
+          t1Qty = buyQty;
+          t2Qty = 0.0;
+        }
+      } else {
+        final rate = usdTryRate > 0 ? usdTryRate : 36.50;
+        final usdBudget = safeTry / rate;
+        buyQty = usdBudget / entry;
+        t1Qty = buyQty * 0.5;
+        t2Qty = buyQty * 0.5;
+      }
+    }
+
+    return OrderSizingPlan(
+      market: m,
+      horizon: classifyHorizon(signal),
+      allocatedTry: safeTry,
+      buyQuantity: buyQty,
+      sellQtyTarget1: t1Qty,
+      sellQtyTarget2: t2Qty,
+      stopQty: buyQty,
+      entryPrice: entry,
+      target1: signal.target1,
+      target2: signal.target2,
+      stopPrice: signal.initialStop,
+    );
+  }
+
+  static String formatQty(double q, Market m, {String? unit}) {
+    final u = unit ?? 'adet';
+    if (q <= 0) return '0 $u';
+    if (m == Market.bist) {
+      return '${Fmt.number(q.roundToDouble(), decimals: 0)} $u';
+    }
+    final decimals = q >= 100 ? 1 : (q >= 1 ? 2 : (q >= 0.01 ? 4 : 5));
+    return '${Fmt.number(q, decimals: decimals)} $u';
+  }
+
+  String qtyBuyLabel({String? unit}) => formatQty(buyQuantity, market, unit: unit);
+  String qtyT1Label({String? unit}) => formatQty(sellQtyTarget1, market, unit: unit);
+  String qtyT2Label({String? unit}) => formatQty(sellQtyTarget2, market, unit: unit);
+  String qtyStopLabel({String? unit}) => formatQty(stopQty, market, unit: unit);
+}
+
+/// Toplam bütçeyi uzun/haftalık portföy, günlük kalan limit ve nakit koruma arasında böler.
+class HorizonBudgetBreakdown {
+  const HorizonBudgetBreakdown({
+    required this.totalBudgetTry,
+    required this.weeklyTry,
+    required this.multiWeekTry,
+    required this.monthlyLongTry,
+    required this.mainInvestedTry,
+    required this.remainingPoolTry,
+    required this.dailyLimitTry,
+    required this.dailyPerSignalTry,
+    required this.cashReserveTry,
+    required this.dailySignalsCount,
+    required this.weeklyCount,
+    required this.multiWeekCount,
+    required this.monthlyLongCount,
+  });
+
+  final double totalBudgetTry;
+  final double weeklyTry;
+  final double multiWeekTry;
+  final double monthlyLongTry;
+  final double mainInvestedTry;
+  final double remainingPoolTry;
+  final double dailyLimitTry;
+  final double dailyPerSignalTry;
+  final double cashReserveTry;
+  final int dailySignalsCount;
+  final int weeklyCount;
+  final int multiWeekCount;
+  final int monthlyLongCount;
+
+  static HorizonBudgetBreakdown compute({
+    required double totalBudget,
+    required PortfolioAllocationResult allocation,
+    required List<SignalRecord> activeDailySignals,
+  }) {
+    var wTry = 0.0;
+    var mwTry = 0.0;
+    var mlTry = 0.0;
+    var wCnt = 0;
+    var mwCnt = 0;
+    var mlCnt = 0;
+
+    for (final rec in allocation.recommendations) {
+      final tryAmt = totalBudget * rec.weightPct / 100.0;
+      switch (classifyHorizon(rec.signal)) {
+        case InvestmentHorizon.daily:
+        case InvestmentHorizon.weekly:
+          wTry += tryAmt;
+          wCnt++;
+          break;
+        case InvestmentHorizon.multiWeek:
+          mwTry += tryAmt;
+          mwCnt++;
+          break;
+        case InvestmentHorizon.monthlyLong:
+          mlTry += tryAmt;
+          mlCnt++;
+          break;
+      }
+    }
+
+    final mainTry = wTry + mwTry + mlTry;
+    final remTry = math.max(0.0, totalBudget - mainTry);
+    final dailySigs = [
+      for (final s in activeDailySignals)
+        if (classifyHorizon(s) == InvestmentHorizon.daily) s,
+    ];
+
+    double dailyShareCap;
+    double remShareRatio;
+    switch (allocation.appetite) {
+      case RiskAppetite.conservative:
+        dailyShareCap = 0.12;
+        remShareRatio = 0.40;
+        break;
+      case RiskAppetite.balanced:
+        dailyShareCap = 0.20;
+        remShareRatio = 0.50;
+        break;
+      case RiskAppetite.aggressive:
+        dailyShareCap = 0.25;
+        remShareRatio = 0.65;
+        break;
+    }
+
+    final dLimit = dailySigs.isEmpty ? 0.0 : math.min(totalBudget * dailyShareCap, remTry * remShareRatio);
+    final slots = math.min(dailySigs.length, 3);
+    final perSig = slots > 0 ? dLimit / slots : 0.0;
+    final cashTry = math.max(0.0, remTry - dLimit);
+
+    return HorizonBudgetBreakdown(
+      totalBudgetTry: totalBudget,
+      weeklyTry: wTry,
+      multiWeekTry: mwTry,
+      monthlyLongTry: mlTry,
+      mainInvestedTry: mainTry,
+      remainingPoolTry: remTry,
+      dailyLimitTry: dLimit,
+      dailyPerSignalTry: perSig,
+      cashReserveTry: cashTry,
+      dailySignalsCount: dailySigs.length,
+      weeklyCount: wCnt,
+      multiWeekCount: mwCnt,
+      monthlyLongCount: mlCnt,
+    );
+  }
+}
+
+/// Kullanıcıdan gelen TL bütçe metnini (ör. "150.000", "75000", "125000,5") sayıya çevirir.
+double? parseTryInput(String raw) {
+  var s = raw.trim().replaceAll('₺', '').replaceAll('TL', '').replaceAll('tl', '').replaceAll(' ', '');
+  if (s.isEmpty) return null;
+  if (s.contains(',') && s.contains('.')) {
+    s = s.replaceAll('.', '').replaceAll(',', '.');
+  } else if (s.contains(',')) {
+    s = s.replaceAll(',', '.');
+  } else if (RegExp(r'^\d{1,3}(\.\d{3})+$').hasMatch(s)) {
+    s = s.replaceAll('.', '');
+  }
+  final v = double.tryParse(s);
+  if (v == null || !v.isFinite || v <= 0) return null;
+  return v;
+}
+
+/// İki modlu portföy seçim çubuğu: Otomatik Seçsin (tüm evren) vs Kendim Seçeyim (seçtiklerim).
+class PortfolioModeSelector extends StatelessWidget {
+  const PortfolioModeSelector({
+    super.key,
+    required this.userSelected,
+    required this.selectedCount,
+    required this.onModeChanged,
+    this.onPickAssets,
+    this.autoKey,
+    this.customKey,
+  });
+
+  final bool userSelected;
+  final int selectedCount;
+  final ValueChanged<bool> onModeChanged;
+  final VoidCallback? onPickAssets;
+  final Key? autoKey;
+  final Key? customKey;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+
+    Widget pill(Key? key, String title, String tagText, bool active, VoidCallback onTap) => Expanded(
+          child: InkWell(
+            key: key,
+            borderRadius: BorderRadius.circular(12),
+            onTap: onTap,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+              decoration: BoxDecoration(
+                color: active ? p.accentSoft : p.subtle,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: active ? p.accent : p.border.withValues(alpha: 0.6)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      color: active ? p.accent : p.text,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    tagText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: p.textDim),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            pill(autoKey, 'Otomatik Seçsin', 'Tüm BIST & 10 Kripto', !userSelected, () => onModeChanged(false)),
+            const SizedBox(width: 8),
+            pill(customKey, 'Kendim Seçeyim', '$selectedCount seçili varlık', userSelected, () => onModeChanged(true)),
+          ],
+        ),
+        if (onPickAssets != null) ...[
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: onPickAssets,
+              style: TextButton.styleFrom(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              ),
+              icon: const Icon(Icons.tune_rounded, size: 15),
+              label: Text(
+                userSelected ? 'Seçtiklerimi Düzenle ($selectedCount)' : 'Varlık Kataloğu',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// Vade bazlı bütçe dağılımı ve Kalan Limit kartı (Sadece Spot).
+class HorizonBudgetSummaryCard extends StatelessWidget {
+  const HorizonBudgetSummaryCard({
+    super.key,
+    required this.breakdown,
+    required this.userSelectedMode,
+    required this.selectedCount,
+    required this.onModeChanged,
+    this.onPickAssets,
+    this.onEditBudget,
+  });
+
+  final HorizonBudgetBreakdown breakdown;
+  final bool userSelectedMode;
+  final int selectedCount;
+  final ValueChanged<bool> onModeChanged;
+  final VoidCallback? onPickAssets;
+  final VoidCallback? onEditBudget;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    final b = breakdown;
+
+    Widget cell(String label, double tryVal, String sub, Color color) => Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          decoration: BoxDecoration(
+            color: p.subtle,
+            borderRadius: BorderRadius.circular(11),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: p.textDim, fontWeight: FontWeight.w600)),
+              const SizedBox(height: 2),
+              Text(
+                Fmt.currencyTry(tryVal),
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: color,
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
+              ),
+              Text(sub, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: p.textDim)),
+            ],
+          ),
+        );
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      const Text(
+                        'Portföy & Vade Planı',
+                        style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800),
+                      ),
+                      Tag('SADECE SPOT', color: p.accent),
+                    ],
+                  ),
+                ),
+                if (onEditBudget != null)
+                  TextButton(
+                    key: const Key('btn_edit_budget_shortcut'),
+                    onPressed: onEditBudget,
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                    child: Text(Fmt.currencyTry(b.totalBudgetTry)),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            PortfolioModeSelector(
+              autoKey: const Key('btn_mode_auto'),
+              customKey: const Key('btn_mode_custom'),
+              userSelected: userSelectedMode,
+              selectedCount: selectedCount,
+              onModeChanged: onModeChanged,
+              onPickAssets: onPickAssets,
+            ),
+            const SizedBox(height: 10),
+            LayoutBuilder(
+              builder: (context, c) {
+                final itemWidth = ((c.maxWidth - 8) / 2).clamp(110.0, 400.0);
+                return Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    SizedBox(
+                      width: itemWidth,
+                      child: cell('Haftalık', b.weeklyTry, '${b.weeklyCount} öneri', p.accent),
+                    ),
+                    SizedBox(
+                      width: itemWidth,
+                      child: cell('Birkaç Haftalık', b.multiWeekTry, '${b.multiWeekCount} öneri', p.accent),
+                    ),
+                    SizedBox(
+                      width: itemWidth,
+                      child: cell('Aylık / Uzun Vade', b.monthlyLongTry, '${b.monthlyLongCount} öneri', p.profit),
+                    ),
+                    SizedBox(
+                      width: itemWidth,
+                      child: cell('Kalan Limit · Günlük', b.dailyLimitTry, '${b.dailySignalsCount} gün içi', p.coral),
+                    ),
+                    SizedBox(
+                      width: c.maxWidth,
+                      child: cell('Nakit Koruma', b.cashReserveTry, 'Emniyet tamponu', p.text),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

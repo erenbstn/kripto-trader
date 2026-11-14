@@ -56,6 +56,8 @@ void main() {
 
       // Dilim etiketine dokununca varlık detay alt penceresi açılır
       final thyaoLegend = find.byKey(const Key('donut_legend_bist_THYAO'));
+      await Scrollable.ensureVisible(tester.element(thyaoLegend), alignment: 0.45);
+      await tester.pumpAndSettle();
       await tester.tap(thyaoLegend);
       await tester.pumpAndSettle();
       expect(find.textContaining('Dilim Detayı'), findsOneWidget);
@@ -134,7 +136,7 @@ void main() {
       final pageScrollable = find.descendant(
         of: find.byType(PageBody),
         matching: find.byType(Scrollable),
-      );
+      ).first;
       final privacyBtn = find.byKey(const Key('btn_privacy_and_legal'));
       await tester.scrollUntilVisible(privacyBtn, 250, scrollable: pageScrollable);
       await tester.drag(pageScrollable, const Offset(0, -120));
@@ -252,6 +254,56 @@ void main() {
         find.textContaining('Kripto taraması ve fiyat ekranı yalnızca belirlediğin 10 kripto için aktiftir'),
         findsOneWidget,
       );
+    });
+
+    testWidgets('Sadece Spot, özel bütçe (TL/adet), iki seçim modu ve çoklu vade filtresi çalışır', (tester) async {
+      setWebViewport(tester);
+      await tester.pumpWidget(const ProviderScope(child: PusulaApp()));
+      await tester.pumpAndSettle();
+
+      // Gereksiz uzun uyarı / yönlendirme metni ve kaldıraçlı (Futures) ifadeleri bulunmaz
+      expect(find.textContaining('Döndürmek için sürükleyin'), findsNothing);
+      expect(find.textContaining('Futures'), findsNothing);
+
+      // Kahraman bütçe alanından özel bütçe (₺200.000) girip uygulayınca TL/adet güncellenir
+      await tester.ensureVisible(find.byKey(const Key('btn_hero_budget_selector')));
+      await tester.tap(find.byKey(const Key('btn_hero_budget_selector')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byKey(const Key('input_custom_budget_try')), '200000');
+      await tester.tap(find.byKey(const Key('btn_apply_custom_budget')));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('200.000'), findsWidgets);
+      expect(find.textContaining('adet AL'), findsWidgets);
+
+      // Varsayılan Otomatik Seçsin modunda favori olmayan TUPRS önerilerde/halkada vardır; Kendim Seçeyim'e geçince çıkar
+      await tester.tap(find.byKey(const Key('phantom_toast_capsule')), warnIfMissed: false);
+      await tester.pumpAndSettle();
+      await Scrollable.ensureVisible(tester.element(find.byKey(const Key('btn_mode_custom'))), alignment: 0.45);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('btn_mode_custom')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('donut_legend_bist_TUPRS')), findsNothing);
+
+      // Öneri sekmesinde vade filtreleri, Günlük Al-Sat · Kalan Limit ve SADECE SPOT etiketleri görünür
+      await tester.tap(find.text('Öneri').last);
+      await tester.pumpAndSettle();
+
+      expect(find.byKey(const Key('filter_horizon_all')), findsOneWidget);
+      expect(find.byKey(const Key('filter_horizon_daily')), findsOneWidget);
+      expect(find.byKey(const Key('filter_horizon_weekly')), findsOneWidget);
+      expect(find.byKey(const Key('filter_horizon_multiweek')), findsOneWidget);
+      expect(find.byKey(const Key('filter_horizon_monthly')), findsOneWidget);
+      expect(find.textContaining('Günlük Al-Sat · Kalan Limit'), findsOneWidget);
+      expect(find.textContaining('SADECE SPOT'), findsWidgets);
+
+      // Ayar sekmesinde özel bütçe alanı ve çift seçim modu çalışır
+      await tester.tap(find.text('Ayar').last);
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('input_ayar_budget_try')), findsOneWidget);
+      expect(find.byKey(const Key('ayar_btn_mode_auto')), findsOneWidget);
+      expect(find.byKey(const Key('ayar_btn_mode_custom')), findsOneWidget);
     });
   });
 }

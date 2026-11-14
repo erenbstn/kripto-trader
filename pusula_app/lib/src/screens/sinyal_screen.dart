@@ -23,14 +23,35 @@ class SinyalScreen extends ConsumerStatefulWidget {
 class _SinyalScreenState extends ConsumerState<SinyalScreen> {
   Market? _market;
   _StatusFilter _status = _StatusFilter.all;
+  InvestmentHorizon? _horizonFilter;
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pusulaControllerProvider);
+    final p = PusulaPalette.of(context);
     final query = ref.watch(searchQueryProvider).trim().toLowerCase();
     final shortTerm = state.currentReport.shortTermReport;
     final scan = state.lastScan;
     final misses = scan == null ? const <ScanCandidate>[] : [for (final c in scan.nearMisses) if (!c.weekly) c];
+    final alloc = state.currentReport.newAllocation;
+    final breakdown = HorizonBudgetBreakdown.compute(
+      totalBudget: state.settings.budgetAmount,
+      allocation: alloc,
+      activeDailySignals: state.effectiveShortTermSignals,
+    );
+    final recAllocBySymbol = <String, double>{
+      for (final r in alloc.recommendations)
+        r.instrument.symbol: state.settings.budgetAmount * r.weightPct / 100.0,
+    };
+
+    double? allocFor(SignalRecord sig) {
+      if (!sig.isActive) return null;
+      if (classifyHorizon(sig) == InvestmentHorizon.daily) {
+        return breakdown.dailyPerSignalTry > 0 ? breakdown.dailyPerSignalTry : null;
+      }
+      final recTry = recAllocBySymbol[sig.instrument.symbol];
+      return (recTry != null && recTry > 0) ? recTry : null;
+    }
 
     final signals = [
       for (final s in state.allSignals)
@@ -38,12 +59,39 @@ class _SinyalScreenState extends ConsumerState<SinyalScreen> {
             (_status == _StatusFilter.all ||
                 (_status == _StatusFilter.open && s.isActive) ||
                 (_status == _StatusFilter.closed && s.isClosed)) &&
+            (_horizonFilter == null || classifyHorizon(s) == _horizonFilter) &&
+            (!state.settings.isUserSelectedMode || state.settings.favoriteSymbols.contains(s.instrument.symbol)) &&
             (query.isEmpty ||
                 s.instrument.symbol.toLowerCase().contains(query) ||
                 s.instrument.short.toLowerCase().contains(query) ||
                 s.instrument.name.toLowerCase().contains(query)))
           s,
     ];
+
+    Widget horizonChip(Key key, String label, InvestmentHorizon? target) {
+      final selected = _horizonFilter == target;
+      return InkWell(
+        key: key,
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => setState(() => _horizonFilter = target),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+          decoration: BoxDecoration(
+            color: selected ? p.accentSoft : p.card,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: selected ? p.accent : p.border.withValues(alpha: 0.7)),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: selected ? p.accent : p.text,
+            ),
+          ),
+        ),
+      );
+    }
 
     return PageBody(
       primaryFlex: 5,
@@ -52,7 +100,7 @@ class _SinyalScreenState extends ConsumerState<SinyalScreen> {
         const DisclaimerBanner(),
         const SectionTitle(
           'Kısa vade haftalık raporu',
-          subtitle: 'Son 7 günde üretilen kısa vade sinyallerinin gerçekleşen sonuçları.',
+          subtitle: 'Son 7 gün · Sadece Spot gerçekleşen sonuçlar',
         ),
         _MarketStatsCard(
           title: 'Kripto Kısa Vade Özeti',
@@ -68,13 +116,33 @@ class _SinyalScreenState extends ConsumerState<SinyalScreen> {
         if (misses.isNotEmpty) ...[
           const SectionTitle(
             'Elenen kısa vade adayları',
-            subtitle: 'Kurulum bulundu, ancak bir süzgeç reddetti. Zorla sinyal üretilmez.',
+            subtitle: 'Eşik altı · Zorla sinyal yok',
           ),
           RejectedCandidatesCard(candidates: misses),
         ],
       ],
       secondary: [
-        SectionTitle('Sinyal günlüğü', subtitle: '${state.allSignals.length} kayıt · en yeni üstte'),
+        SectionTitle(
+          'Sinyal günlüğü',
+          subtitle: '${signals.length} kayıt · Sadece Spot · Günlük kalan limit: ${Fmt.currencyTry(breakdown.dailyLimitTry)}',
+        ),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              horizonChip(const Key('sinyal_horizon_all'), 'Tümü', null),
+              const SizedBox(width: 8),
+              horizonChip(const Key('sinyal_horizon_daily'), 'Günlük', InvestmentHorizon.daily),
+              const SizedBox(width: 8),
+              horizonChip(const Key('sinyal_horizon_weekly'), 'Haftalık', InvestmentHorizon.weekly),
+              const SizedBox(width: 8),
+              horizonChip(const Key('sinyal_horizon_multiweek'), 'Birkaç Haftalık', InvestmentHorizon.multiWeek),
+              const SizedBox(width: 8),
+              horizonChip(const Key('sinyal_horizon_monthly'), 'Aylık / Uzun Vade', InvestmentHorizon.monthlyLong),
+            ],
+          ),
+        ),
+        const Gap(10),
         Wrap(
           spacing: 10,
           runSpacing: 8,
@@ -83,8 +151,8 @@ class _SinyalScreenState extends ConsumerState<SinyalScreen> {
               showSelectedIcon: false,
               segments: const [
                 ButtonSegment<Market?>(value: null, label: Text('Tümü')),
-                ButtonSegment<Market?>(value: Market.bist, label: Text('BIST')),
-                ButtonSegment<Market?>(value: Market.crypto, label: Text('Kripto')),
+                ButtonSegment<Market?>(value: Market.bist, label: Text('BIST (₺)')),
+                ButtonSegment<Market?>(value: Market.crypto, label: Text('Kripto (\$)')),
               ],
               selected: {_market},
               onSelectionChanged: (sel) => setState(() => _market = sel.first),
@@ -107,13 +175,17 @@ class _SinyalScreenState extends ConsumerState<SinyalScreen> {
             icon: Icons.inbox_outlined,
             title: state.allSignals.isEmpty ? 'Günlük boş' : 'Bu süzgeçte kayıt yok',
             body: state.allSignals.isEmpty
-                ? 'Pusula yalnızca hunideki tüm süzgeçleri geçen kurulumları kaydeder. '
-                    'Henüz onaylanan sinyal yok; bu da bir bilgidir.'
-                : 'Süzgeçleri değiştirerek diğer kayıtları görebilirsin.',
+                ? 'Onaylı spot kurulumu henüz yok.'
+                : 'Süzgeç veya vade seçimini değiştir.',
           )
         else
           for (final sig in signals) ...[
-            SignalCard(signal: sig, currentPrice: state.priceOf(sig.instrument)),
+            SignalCard(
+              signal: sig,
+              currentPrice: state.priceOf(sig.instrument),
+              allocatedTry: allocFor(sig),
+              usdTryRate: state.settings.usdTryRate,
+            ),
             const Gap(10),
           ],
       ],
@@ -187,7 +259,7 @@ class _MarketStatsCard extends StatelessWidget {
               if (stats.closedSignals > 0 && stats.closedSignals < 30) ...[
                 const Gap(8),
                 Text(
-                  'Örneklem küçük (${stats.closedSignals} kapanan sinyal): bu oranlar istatistiksel olarak güvenilir değildir.',
+                  'Küçük örneklem (${stats.closedSignals} sinyal) · Düşük istatistiksel güven.',
                   style: TextStyle(fontSize: 11.5, color: p.textDim, height: 1.35),
                 ),
               ],

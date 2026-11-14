@@ -6,12 +6,9 @@ import '../state/pusula_controller.dart';
 import '../theme/gunduz_theme.dart';
 import '../widgets/common.dart';
 import '../widgets/recommendation_card.dart';
+import '../widgets/signal_card.dart';
 
-/// Sekme 2 — Öneri + Geçmiş.
-///
-/// Önce geçen haftanın gerçekleşen sonucu (ilk haftada "Geçen hafta raporu: henüz veri yok"),
-/// sonra bu haftanın yeni BIST ve kripto önerileri. Geçmiş sekmesinde ileriye dönük performans
-/// eğrisi ve rapor arşivi bulunur.
+/// Sekme 2 — Öneri + Geçmiş (Sadece Spot · Vade & Kalan Limit Planı).
 class OneriScreen extends ConsumerStatefulWidget {
   const OneriScreen({super.key});
 
@@ -22,10 +19,45 @@ class OneriScreen extends ConsumerStatefulWidget {
 class _OneriScreenState extends ConsumerState<OneriScreen> {
   bool _showHistoryTab = false;
   Market? _marketFilter;
+  InvestmentHorizon? _horizonFilter;
+
+  Future<void> _openBudgetDialog(BuildContext context, PusulaController controller, double currentBudget) async {
+    final ctrl = TextEditingController(text: currentBudget.round().toString());
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Portföy Bütçesi (₺)'),
+        content: TextField(
+          key: const Key('input_oneri_budget_try'),
+          controller: ctrl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            prefixText: '₺ ',
+            border: OutlineInputBorder(),
+            isDense: true,
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(), child: const Text('Vazgeç')),
+          FilledButton(
+            key: const Key('btn_oneri_budget_apply'),
+            onPressed: () {
+              final parsed = parseTryInput(ctrl.text);
+              if (parsed != null) controller.updateBudget(parsed);
+              Navigator.of(ctx).pop();
+            },
+            child: const Text('Uygula'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pusulaControllerProvider);
+    final controller = ref.read(pusulaControllerProvider.notifier);
     final tabs = _TabSwitch(
       showHistory: _showHistoryTab,
       onChanged: (v) => setState(() => _showHistoryTab = v),
@@ -47,11 +79,12 @@ class _OneriScreenState extends ConsumerState<OneriScreen> {
       primaryFlex: 4,
       secondaryFlex: 7,
       primary: [...header, const Gap(14), _LastWeekCard(review: state.currentReport.lastWeekReview)],
-      secondary: _recommendations(context, state),
+      secondary: _recommendations(context, state, controller),
     );
   }
 
-  List<Widget> _recommendations(BuildContext context, PusulaAppState state) {
+  List<Widget> _recommendations(BuildContext context, PusulaAppState state, PusulaController controller) {
+    final p = PusulaPalette.of(context);
     final alloc = state.currentReport.newAllocation;
     final query = ref.watch(searchQueryProvider).trim().toLowerCase();
     bool matches(Instrument ins) =>
@@ -60,70 +93,151 @@ class _OneriScreenState extends ConsumerState<OneriScreen> {
         ins.short.toLowerCase().contains(query) ||
         ins.name.toLowerCase().contains(query);
 
-    final recs = <WeeklyRecommendation>[
-      if (_marketFilter == null || _marketFilter == Market.bist)
-        for (final r in alloc.bistRecommendations)
-          if (matches(r.instrument)) r,
-      if (_marketFilter == null || _marketFilter == Market.crypto)
-        for (final r in alloc.cryptoRecommendations)
-          if (matches(r.instrument)) r,
+    final dailySignals = [
+      for (final s in state.effectiveShortTermSignals)
+        if (classifyHorizon(s) == InvestmentHorizon.daily &&
+            (_marketFilter == null || s.instrument.market == _marketFilter) &&
+            matches(s.instrument))
+          s,
     ];
+    final breakdown = HorizonBudgetBreakdown.compute(
+      totalBudget: state.settings.budgetAmount,
+      allocation: alloc,
+      activeDailySignals: state.effectiveShortTermSignals,
+    );
+
+    final recs = <WeeklyRecommendation>[
+      for (final r in [
+        if (_marketFilter == null || _marketFilter == Market.bist) ...alloc.bistRecommendations,
+        if (_marketFilter == null || _marketFilter == Market.crypto) ...alloc.cryptoRecommendations,
+      ])
+        if (matches(r.instrument) &&
+            (_horizonFilter == null || classifyHorizon(r.signal) == _horizonFilter))
+          r,
+    ];
+    final showDaily = _horizonFilter == null || _horizonFilter == InvestmentHorizon.daily;
     final scan = state.lastScan;
     final weeklyMisses = scan == null ? const <ScanCandidate>[] : [for (final c in scan.nearMisses) if (c.weekly) c];
+
+    Widget horizonChip(Key key, String label, InvestmentHorizon? target) {
+      final selected = _horizonFilter == target;
+      return InkWell(
+        key: key,
+        borderRadius: BorderRadius.circular(999),
+        onTap: () => setState(() => _horizonFilter = target),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: selected ? p.accentSoft : p.card,
+            borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: selected ? p.accent : p.border.withValues(alpha: 0.7)),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: selected ? p.accent : p.text,
+            ),
+          ),
+        ),
+      );
+    }
 
     return [
       const SectionTitle(
         '2. Bu Haftanın Yeni Önerileri',
-        subtitle: 'Kripto 4 saatlik, BIST günlük kapanmış mum kurulumları. Ağırlıklar risk bütçesinden türetilir.',
+        subtitle: 'Sadece Spot · Vade planı, alım ₺ ve adet',
       ),
+      HorizonBudgetSummaryCard(
+        breakdown: breakdown,
+        userSelectedMode: state.settings.isUserSelectedMode,
+        selectedCount: state.settings.favoriteSymbols.length,
+        onModeChanged: (userSel) => controller.setPortfolioSelectionMode(userSelected: userSel),
+        onEditBudget: () => _openBudgetDialog(context, controller, state.settings.budgetAmount),
+      ),
+      const Gap(10),
+      SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            horizonChip(const Key('filter_horizon_all'), 'Tüm Vadeler', null),
+            const SizedBox(width: 8),
+            horizonChip(const Key('filter_horizon_daily'), 'Günlük', InvestmentHorizon.daily),
+            const SizedBox(width: 8),
+            horizonChip(const Key('filter_horizon_weekly'), 'Haftalık', InvestmentHorizon.weekly),
+            const SizedBox(width: 8),
+            horizonChip(const Key('filter_horizon_multiweek'), 'Birkaç Haftalık', InvestmentHorizon.multiWeek),
+            const SizedBox(width: 8),
+            horizonChip(const Key('filter_horizon_monthly'), 'Aylık / Uzun Vade', InvestmentHorizon.monthlyLong),
+          ],
+        ),
+      ),
+      const Gap(10),
       Align(
         alignment: Alignment.centerLeft,
         child: SegmentedButton<Market?>(
           showSelectedIcon: false,
           segments: const [
             ButtonSegment<Market?>(value: null, label: Text('Tümü')),
-            ButtonSegment<Market?>(value: Market.bist, label: Text('BIST')),
-            ButtonSegment<Market?>(value: Market.crypto, label: Text('Kripto')),
+            ButtonSegment<Market?>(value: Market.bist, label: Text('BIST (₺)')),
+            ButtonSegment<Market?>(value: Market.crypto, label: Text('Kripto (\$)')),
           ],
           selected: {_marketFilter},
           onSelectionChanged: (sel) => setState(() => _marketFilter = sel.first),
         ),
       ),
       const Gap(12),
-      if (recs.isEmpty)
+      if (recs.isEmpty && (!showDaily || dailySignals.isEmpty))
         EmptyNote(
           icon: Icons.savings_outlined,
-          title: 'Bu hafta net fırsat yok, nakitte kal.',
+          title: 'Bu vade için net fırsat yok · Nakit',
           body: scan == null && !state.isDemo
-              ? 'Henüz tarama yapılmadı; değerlendirme ilk taramadan sonra görünür.'
-              : (weeklyMisses.isEmpty
-                  ? 'Taranan varlıklarda güven eşiğini geçen haftalık kurulum çıkmadı.'
-                  : '${weeklyMisses.length} aday kurulum buldu ama süzgeçlerden geçemedi; ayrıntı aşağıda.'),
+              ? 'Tarama bekleniyor.'
+              : 'Eşik üstü spot kurulumu çıkmadı.',
         )
-      else
-        LayoutBuilder(
-          builder: (context, c) {
-            final twoCol = c.maxWidth >= 720 && recs.length > 1;
-            final w = twoCol ? (c.maxWidth - 14) / 2 : c.maxWidth;
-            return Wrap(
-              spacing: 14,
-              runSpacing: 12,
-              children: [
-                for (final rec in recs)
-                  SizedBox(
-                    width: w,
-                    child: RecommendationDetailCard(
-                      recommendation: rec,
-                      budgetAmount: state.settings.budgetAmount,
-                      currentPrice: state.priceOf(rec.instrument),
+      else ...[
+        if (recs.isNotEmpty)
+          LayoutBuilder(
+            builder: (context, c) {
+              final twoCol = c.maxWidth >= 720 && recs.length > 1;
+              final w = twoCol ? (c.maxWidth - 14) / 2 : c.maxWidth;
+              return Wrap(
+                spacing: 14,
+                runSpacing: 12,
+                children: [
+                  for (final rec in recs)
+                    SizedBox(
+                      width: w,
+                      child: RecommendationDetailCard(
+                        recommendation: rec,
+                        budgetAmount: state.settings.budgetAmount,
+                        usdTryRate: state.settings.usdTryRate,
+                        currentPrice: state.priceOf(rec.instrument),
+                      ),
                     ),
-                  ),
-              ],
-            );
-          },
-        ),
+                ],
+              );
+            },
+          ),
+        if (showDaily && dailySignals.isNotEmpty) ...[
+          SectionTitle(
+            'Günlük Al-Sat · Kalan Limit (${dailySignals.length})',
+            subtitle: 'Günlük limit: ${Fmt.currencyTry(breakdown.dailyLimitTry)} · İşlem başı ~${Fmt.currencyTry(breakdown.dailyPerSignalTry)}',
+          ),
+          for (final sig in dailySignals) ...[
+            SignalCard(
+              signal: sig,
+              currentPrice: state.priceOf(sig.instrument),
+              allocatedTry: breakdown.dailyPerSignalTry,
+              usdTryRate: state.settings.usdTryRate,
+            ),
+            const Gap(10),
+          ],
+        ],
+      ],
       if (weeklyMisses.isNotEmpty) ...[
-        const SectionTitle('Elenen haftalık adaylar', subtitle: 'Kurulum bulundu, ancak bir süzgeç reddetti.'),
+        const SectionTitle('Elenen adaylar'),
         Card(
           child: Column(
             children: [
@@ -259,9 +373,8 @@ class _LastWeekCard extends StatelessWidget {
               Text(review.emptyMessage, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800)),
               const Gap(6),
               Text(
-                'Geçmiş mumlarda strateji sınaması (backtest) yapılmaz. Buradaki getiriler yalnızca sistemin '
-                'ileriye dönük ürettiği önerilerin gerçekleşen sonuçlarıdır; veri uydurulmaz.',
-                style: TextStyle(fontSize: 12.5, color: p.textDim, height: 1.4),
+                'Sadece ileriye dönük · Gerçekleşen spot haftalık sonuçlar · Backtest yok.',
+                style: TextStyle(fontSize: 12, color: p.textDim, height: 1.35),
               ),
             ] else ...[
               Row(
@@ -351,9 +464,8 @@ class _PerformanceCard extends StatelessWidget {
             const Gap(12),
             if (curve.isEmpty)
               Text(
-                'Henüz tamamlanmış hafta verisi yok. Sistem geçmiş veride backtest yapmaz; eğri yalnızca '
-                'ileriye dönük gerçekleşen haftalık raporlardan oluşur.',
-                style: TextStyle(fontSize: 13, color: p.textDim, height: 1.4),
+                'Tamamlanmış hafta verisi yok · İleriye dönük spot gerçekleşmeleri eklenir.',
+                style: TextStyle(fontSize: 12.5, color: p.textDim, height: 1.35),
               )
             else ...[
               Row(

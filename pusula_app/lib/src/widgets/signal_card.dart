@@ -24,17 +24,21 @@ import 'common.dart';
   }
 }
 
-/// Tek sinyal kartı. [compact] Özet ekranındaki kısa görünüm; tam görünüm gerekçeyi de gösterir.
+/// Tek sinyal kartı (Sadece Spot · bütçe verilirse kesin alım/satım adedi gösterir).
 class SignalCard extends StatelessWidget {
   const SignalCard({
     super.key,
     required this.signal,
     this.currentPrice,
+    this.allocatedTry,
+    this.usdTryRate = 36.50,
     this.compact = false,
   });
 
   final SignalRecord signal;
   final double? currentPrice;
+  final double? allocatedTry;
+  final double usdTryRate;
   final bool compact;
 
   @override
@@ -43,7 +47,11 @@ class SignalCard extends StatelessWidget {
     final s = signal;
     final market = s.instrument.market;
     final st = signalStatusStyle(p, s);
+    final horizon = classifyHorizon(s);
     final now = DateTime.now().toUtc();
+    final plan = (allocatedTry != null && allocatedTry! > 0)
+        ? OrderSizingPlan.fromSignal(signal: s, allocatedTry: allocatedTry!, usdTryRate: usdTryRate)
+        : null;
 
     return Card(
       child: Padding(
@@ -64,8 +72,8 @@ class SignalCard extends StatelessWidget {
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
                           MarketTag(market),
-                          Tag(s.isWeeklyProposal ? 'HAFTALIK · ${s.interval.code}' : 'KISA VADE · ${s.interval.code}',
-                              color: p.neutral),
+                          Tag(horizon.label, color: p.profit),
+                          Tag('SPOT', color: p.accent),
                           Tag(st.label, color: st.color, icon: st.icon),
                         ],
                       ),
@@ -85,7 +93,29 @@ class SignalCard extends StatelessWidget {
                 ConfidenceRing(score: s.confidence.total, size: 50),
               ],
             ),
-            const SizedBox(height: 12),
+            if (plan != null && s.isActive) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                decoration: BoxDecoration(color: p.subtle, borderRadius: BorderRadius.circular(10)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Alım: ${Fmt.currencyTry(plan.allocatedTry)} · ${plan.qtyBuyLabel()} AL',
+                      style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: p.profit),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'H1: ${plan.qtyT1Label()} sat · H2: ${plan.qtyT2Label()} sat · Stop: ${plan.qtyStopLabel()} sat',
+                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: p.textDim),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
             PriceLadder(
               market: market,
               stop: s.initialStop,
@@ -100,7 +130,7 @@ class SignalCard extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 6,
                 children: [
-                  SignedMetricChip(value: s.realizedR!, suffix: 'R gerçekleşen', decimals: 2),
+                  SignedMetricChip(value: s.realizedR!, suffix: 'R', decimals: 2),
                   if (s.realizedPct != null) SignedMetricChip(value: s.realizedPct!, suffix: '', prefix: '%', decimals: 2),
                 ],
               ),
@@ -108,28 +138,28 @@ class SignalCard extends StatelessWidget {
             ],
             if (s.status == SignalStatus.target1 && s.isActive)
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: 6),
                 child: Text(
-                  'Stop başabaşa (${Fmt.priceWithCurrency(s.currentStop, market)}) çekildi; kalan pozisyon ana hedefi bekliyor.',
+                  'Stop başabaş (${Fmt.priceWithCurrency(s.currentStop, market)})',
                   style: TextStyle(fontSize: 12, color: p.profit, fontWeight: FontWeight.w600),
                 ),
               ),
             Text(
-              'Giriş bölgesi ${Fmt.priceWithCurrency(s.entryZoneLow, market)} – ${Fmt.priceWithCurrency(s.entryZoneHigh, market)}'
+              'Giriş ${Fmt.priceWithCurrency(s.entryZoneLow, market)}–${Fmt.priceWithCurrency(s.entryZoneHigh, market)}'
               ' · Ö/R ${Fmt.number(s.rewardRisk, decimals: 1)}'
               ' · Monte Carlo +${s.confidence.monteCarloScore}/15',
-              style: TextStyle(fontSize: 12, color: p.textDim, height: 1.35),
+              style: TextStyle(fontSize: 11.5, color: p.textDim, height: 1.3),
             ),
             if (!compact) ...[
-              const SizedBox(height: 6),
+              const SizedBox(height: 5),
               Text(
                 s.rationale,
-                maxLines: 4,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 12.5, height: 1.4),
+                style: const TextStyle(fontSize: 12, height: 1.35),
               ),
               if (s.exitReason != null) ...[
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Text(
                   'Sonuç: ${s.exitReason}',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: st.color),

@@ -15,6 +15,84 @@ import '../widgets/common.dart';
 /// Bütçe ve risk iştahı (K3), görünüm/pil tasarrufu, yerel bildirim kanalları ve sessiz saatler,
 /// arka plan zamanlama/pil muafiyet rehberi (K1), veri kaynağı sağlığı, aşırı uyum koruması
 /// ve gizlilik/Play beyanı.
+class _AyarBudgetField extends StatefulWidget {
+  const _AyarBudgetField({required this.budgetAmount, required this.onApply});
+
+  final double budgetAmount;
+  final ValueChanged<double> onApply;
+
+  @override
+  State<_AyarBudgetField> createState() => _AyarBudgetFieldState();
+}
+
+class _AyarBudgetFieldState extends State<_AyarBudgetField> {
+  late final TextEditingController _ctrl;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = TextEditingController(text: widget.budgetAmount.round().toString());
+  }
+
+  @override
+  void didUpdateWidget(covariant _AyarBudgetField oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if ((oldWidget.budgetAmount - widget.budgetAmount).abs() >= 1) {
+      _ctrl.text = widget.budgetAmount.round().toString();
+      _error = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final parsed = parseTryInput(_ctrl.text);
+    if (parsed == null || parsed < 1000) {
+      setState(() => _error = 'En az ₺1.000 gir');
+      return;
+    }
+    setState(() => _error = null);
+    widget.onApply(parsed);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: TextField(
+            key: const Key('input_ayar_budget_try'),
+            controller: _ctrl,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _submit(),
+            decoration: InputDecoration(
+              isDense: true,
+              labelText: 'Özel bütçe (₺)',
+              hintText: 'Örn. 200000',
+              errorText: _error,
+              suffixText: '₺',
+              border: const OutlineInputBorder(),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        FilledButton(
+          key: const Key('btn_ayar_apply_budget'),
+          onPressed: _submit,
+          child: const Text('Uygula'),
+        ),
+      ],
+    );
+  }
+}
+
 class AyarScreen extends ConsumerWidget {
   const AyarScreen({super.key});
 
@@ -33,7 +111,7 @@ class AyarScreen extends ConsumerWidget {
         const DisclaimerBanner(),
         const SectionTitle(
           'Portföy ve görünüm',
-          subtitle: 'Referans bütçe yalnızca TL tutar hesabında kullanılır; cihaz dışına çıkmaz.',
+          subtitle: 'Spot portföy bütçesi · Mod · Görünüm',
         ),
         Card(
           child: Padding(
@@ -43,22 +121,22 @@ class AyarScreen extends ConsumerWidget {
               children: [
                 CardHeader(
                   icon: Icons.account_balance_wallet_outlined,
-                  title: 'Referans bütçe ve risk iştahı',
+                  title: 'Portföy bütçesi ve risk · Sadece Spot',
                   trailing: Tag(Fmt.tl(s.budgetAmount), color: p.accent),
                 ),
                 const Gap(12),
-                Text(
-                  'Seçili bütçe: ${Fmt.tl(s.budgetAmount)} (yerel ağırlık tutarı gösterimi içindir)',
-                  style: TextStyle(fontSize: 12.5, color: p.textDim),
+                _AyarBudgetField(
+                  budgetAmount: s.budgetAmount,
+                  onApply: controller.updateBudget,
                 ),
-                const Gap(8),
+                const Gap(10),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    for (final amt in const [50000.0, 100000.0, 250000.0, 500000.0])
+                    for (final amt in const [50000.0, 100000.0, 250000.0, 500000.0, 1000000.0])
                       ChoiceChip(
-                        label: Text('${(amt / 1000).toStringAsFixed(0)} Bin TL'),
+                        label: Text(amt >= 1000000 ? '1M TL' : '${(amt / 1000).toStringAsFixed(0)} Bin TL'),
                         selected: (s.budgetAmount - amt).abs() < 1,
                         onSelected: (_) => controller.updateBudget(amt),
                       ),
@@ -66,14 +144,27 @@ class AyarScreen extends ConsumerWidget {
                 ),
                 const Gap(14),
                 Text(
-                  'Risk iştahı (K3 üst sınırları)',
+                  'Portföy seçim modu',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: p.text),
+                ),
+                const Gap(8),
+                PortfolioModeSelector(
+                  userSelected: s.isUserSelectedMode,
+                  selectedCount: s.favoriteSymbols.length,
+                  autoKey: const Key('ayar_btn_mode_auto'),
+                  customKey: const Key('ayar_btn_mode_custom'),
+                  onModeChanged: (userSel) => controller.setPortfolioSelectionMode(userSelected: userSel),
+                ),
+                const Gap(14),
+                Text(
+                  'Risk iştahı',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: p.text),
                 ),
                 const Gap(4),
                 Text(
-                  'Tek varlık sınırı %${s.riskAppetite.maxSingleAssetPct.toStringAsFixed(0)} · '
-                  'En az nakit %${s.riskAppetite.minCashPct.toStringAsFixed(0)} · '
-                  'Kripto sınırı %${s.riskAppetite.maxCryptoTotalPct.toStringAsFixed(0)}',
+                  'Tek varlık ≤%${s.riskAppetite.maxSingleAssetPct.toStringAsFixed(0)} · '
+                  'Nakit ≥%${s.riskAppetite.minCashPct.toStringAsFixed(0)} · '
+                  'Kripto ≤%${s.riskAppetite.maxCryptoTotalPct.toStringAsFixed(0)}',
                   style: TextStyle(fontSize: 12, color: p.textDim),
                 ),
                 const Gap(8),
@@ -94,7 +185,7 @@ class AyarScreen extends ConsumerWidget {
                   key: const Key('switch_ayar_scan_all_bist'),
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Tüm Borsa İstanbul hisselerini tara'),
-                  subtitle: const Text('Açıkken tam BIST hisse kataloğu (300+ hisse) taranır'),
+                  subtitle: const Text('Açık: 300+ BIST hissesi · Kapalı: BIST 30'),
                   value: s.scanAllBistUniverse,
                   onChanged: controller.toggleScanAllBistUniverse,
                 ),
@@ -103,7 +194,7 @@ class AyarScreen extends ConsumerWidget {
                   key: const Key('switch_ayar_scan_only_favorites'),
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Yalnızca favori varlıkları tara'),
-                  subtitle: const Text('Sadece yıldızladığın BIST hisseleri ve izinli kriptolar taranır'),
+                  subtitle: const Text('Kendim Seçeyim: sadece seçili BIST + 10 kripto'),
                   value: s.scanOnlyFavorites,
                   onChanged: controller.toggleScanOnlyFavorites,
                 ),

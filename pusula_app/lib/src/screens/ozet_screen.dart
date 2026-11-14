@@ -76,6 +76,7 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
                     RecommendationDetailCard(
                       recommendation: slice.recommendation!,
                       budgetAmount: budget,
+                      usdTryRate: state.settings.usdTryRate,
                       currentPrice: state.priceOf(slice.recommendation!.instrument),
                       initiallyExpanded: true,
                     )
@@ -93,13 +94,7 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
                               big: true,
                             ),
                             const SizedBox(height: 8),
-                            Text(slice.subtitle, style: TextStyle(fontSize: 13, color: p.textDim, height: 1.35)),
-                            const SizedBox(height: 6),
-                            Text(
-                              'Nakit bir bekleme odası değil, bir pozisyondur: eşiği geçen fırsat olmadığında '
-                              'sermayeyi korur ve bir sonraki kurulum için hazır tutar.',
-                              style: TextStyle(fontSize: 12.5, color: p.textDim, height: 1.35),
-                            ),
+                            Text(slice.subtitle, style: TextStyle(fontSize: 13, color: p.textDim)),
                           ],
                         ),
                       ),
@@ -122,92 +117,17 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
-      builder: (ctx) => Consumer(
-        builder: (ctx, ref, _) {
-          final st = ref.watch(pusulaControllerProvider);
-          final p = PusulaPalette.of(ctx);
-          final s = st.settings;
-          return SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Portföy Bütçesi & Risk İştahı',
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Kapat',
-                        icon: const Icon(Icons.close),
-                        onPressed: () => Navigator.of(ctx).pop(),
-                      ),
-                    ],
-                  ),
-                  const Gap(6),
-                  Text(
-                    'Referans bütçe yalnızca TL ağırlık hesabında kullanılır; cihaz dışına gönderilmez.',
-                    style: TextStyle(fontSize: 12.5, color: p.textDim, height: 1.35),
-                  ),
-                  const Gap(14),
-                  Text(
-                    Fmt.currencyTry(s.budgetAmount),
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.8,
-                      fontFeatures: [FontFeature.tabularFigures()],
-                    ),
-                  ),
-                  Slider(
-                    value: s.budgetAmount.clamp(25000.0, 500000.0),
-                    min: 25000.0,
-                    max: 500000.0,
-                    divisions: 19,
-                    label: Fmt.tl(s.budgetAmount),
-                    onChanged: controller.updateBudget,
-                  ),
-                  const Gap(8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final amt in const [50000.0, 100000.0, 250000.0, 500000.0])
-                        ChoiceChip(
-                          label: Text('${(amt / 1000).toStringAsFixed(0)}B ₺'),
-                          selected: (s.budgetAmount - amt).abs() < 1,
-                          onSelected: (_) => controller.updateBudget(amt),
-                        ),
-                    ],
-                  ),
-                  const Gap(16),
-                  Text('Risk İştahı', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: p.textDim)),
-                  const Gap(8),
-                  SegmentedButton<RiskAppetite>(
-                    showSelectedIcon: false,
-                    segments: [
-                      for (final app in RiskAppetite.values)
-                        ButtonSegment<RiskAppetite>(value: app, label: Text(app.label)),
-                    ],
-                    selected: {s.riskAppetite},
-                    onSelectionChanged: (sel) => controller.updateRiskAppetite(sel.first),
-                  ),
-                  const Gap(12),
-                ],
-              ),
-            ),
-          );
-        },
-      ),
+      builder: (_) => _BudgetRiskSheet(controller: controller),
     );
   }
 
-  void _showSignalModal(BuildContext context, SignalRecord sig, double? currentPrice) {
+  void _showSignalModal(
+    BuildContext context,
+    SignalRecord sig,
+    double? currentPrice, {
+    double? allocatedTry,
+    double usdTryRate = 36.50,
+  }) {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -230,7 +150,7 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
-                        '${sig.instrument.short} · Teknik Kurulum',
+                        '${sig.instrument.short} · Spot Kurulum',
                         style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
                       ),
                     ),
@@ -244,7 +164,12 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
                 const Gap(8),
                 const DisclaimerBanner(),
                 const Gap(12),
-                SignalCard(signal: sig, currentPrice: currentPrice),
+                SignalCard(
+                  signal: sig,
+                  currentPrice: currentPrice,
+                  allocatedTry: allocatedTry,
+                  usdTryRate: usdTryRate,
+                ),
               ],
             ),
           ),
@@ -263,7 +188,16 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
     final flat2D = state.settings.shouldSimplifyAnimations || disableAnim;
     final alloc = state.currentReport.newAllocation;
 
-    final rawSignals = state.isDemo ? state.activeSignals : state.activeShortTermSignals;
+    final rawSignals = state.isDemo ? state.effectiveActiveSignals : state.effectiveShortTermSignals;
+    final dailySignals = [
+      for (final s in state.effectiveShortTermSignals)
+        if (classifyHorizon(s) == InvestmentHorizon.daily) s,
+    ];
+    final breakdown = HorizonBudgetBreakdown.compute(
+      totalBudget: state.settings.budgetAmount,
+      allocation: alloc,
+      activeDailySignals: dailySignals,
+    );
     final openSignals = [
       for (final s in rawSignals)
         if (_matchesQuery(s.instrument, query)) s,
@@ -272,6 +206,10 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
       for (final r in alloc.recommendations)
         if (_matchesQuery(r.instrument, query)) r,
     ];
+    final recAllocBySymbol = {
+      for (final r in alloc.recommendations)
+        r.instrument.symbol.toUpperCase(): state.settings.budgetAmount * r.weightPct / 100.0,
+    };
     final bistCatalog = buildBistCatalog(state.settings);
     final showCryptoSection = _marketFilter == _MarketListFilter.all ||
         _marketFilter == _MarketListFilter.favorites ||
@@ -351,12 +289,23 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
         const Gap(12),
         _PhantomHeroSection(
           state: state,
+          breakdown: breakdown,
           onSelectBudget: () => _showBudgetRiskSheet(context, controller),
         ),
         const Gap(12),
         _PhantomCashCapsule(
           state: state,
+          breakdown: breakdown,
           onTap: () => _showBudgetRiskSheet(context, controller),
+        ),
+        const Gap(12),
+        HorizonBudgetSummaryCard(
+          breakdown: breakdown,
+          userSelectedMode: state.settings.isUserSelectedMode,
+          selectedCount: state.settings.favoriteSymbols.length,
+          onModeChanged: (userSel) => controller.setPortfolioSelectionMode(userSelected: userSel),
+          onPickAssets: () => _openUniverseBrowser(context),
+          onEditBudget: () => _showBudgetRiskSheet(context, controller),
         ),
         const Gap(12),
         Card(
@@ -378,11 +327,11 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
       secondary: [
         if (weeklyRecs.isNotEmpty) ...[
           SectionTitle(
-            'Haftalık Öneriler (${weeklyRecs.length}) ›',
-            subtitle: 'Kripto 4s ve BIST günlük onaylı ağırlık dağılımı.',
+            'Önerilen Portföy (${weeklyRecs.length}) ›',
+            subtitle: 'Sadece Spot · Alım tutarı & adet',
           ),
           SizedBox(
-            height: 146,
+            height: 162,
             child: ListView.separated(
               scrollDirection: Axis.horizontal,
               itemCount: weeklyRecs.length,
@@ -390,6 +339,11 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
               itemBuilder: (ctx, i) {
                 final rec = weeklyRecs[i];
                 final tlAmount = state.settings.budgetAmount * rec.weightPct / 100.0;
+                final plan = OrderSizingPlan.fromSignal(
+                  signal: rec.signal,
+                  allocatedTry: tlAmount,
+                  usdTryRate: state.settings.usdTryRate,
+                );
                 return InkWell(
                   borderRadius: BorderRadius.circular(20),
                   onTap: () => _showSliceModal(
@@ -400,13 +354,13 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
                       categoryLabel: rec.instrument.market == Market.bist ? 'BIST' : 'Kripto',
                       weightPct: rec.weightPct,
                       color: SymbolAvatarBadge.badgeColor(rec.instrument),
-                      subtitle: '${rec.signal.strategy.label} · Güven ${rec.confidence.total}/100',
+                      subtitle: '${plan.horizon.label} · ${rec.signal.strategy.label}',
                       recommendation: rec,
                     ),
                     state,
                   ),
                   child: Container(
-                    width: 156,
+                    width: 172,
                     padding: const EdgeInsets.all(14),
                     decoration: BoxDecoration(
                       color: p.card,
@@ -420,7 +374,7 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            SymbolAvatarBadge(instrument: rec.instrument, size: 40),
+                            SymbolAvatarBadge(instrument: rec.instrument, size: 38),
                             Tag(Fmt.pct(rec.weightPct, decimals: 0), color: p.accent),
                           ],
                         ),
@@ -433,9 +387,15 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
                               overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
                             ),
+                            Text(
+                              plan.horizon.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: p.textDim),
+                            ),
                             const SizedBox(height: 2),
                             Text(
-                              '${Fmt.currencyTry(tlAmount)} · Skor ${rec.confidence.total}',
+                              '${Fmt.currencyTry(tlAmount)} · ${plan.qtyBuyLabel()} AL',
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: p.profit),
@@ -451,18 +411,16 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
           ),
         ],
         SectionTitle(
-          state.isDemo
-              ? 'Açık Sinyaller (${openSignals.length}) ›'
-              : 'Kısa Vade Sinyaller (${openSignals.length}) ›',
-          subtitle: query.isEmpty ? 'Dokunarak giriş, stop ve hedef merdivenini inceleyin.' : '"$query" için süzüldü',
+          'Günlük & Aktif Sinyaller (${openSignals.length}) ›',
+          subtitle: query.isEmpty ? 'Kalan Limit · Al/Sat Adet' : '"$query"',
         ),
         if (openSignals.isEmpty)
           EmptyNote(
             icon: Icons.radar,
-            title: query.isNotEmpty ? 'Aramayla eşleşen sinyal yok' : 'Açık kısa vade sinyali yok',
+            title: query.isNotEmpty ? 'Eşleşen sinyal yok' : 'Aktif sinyal yok',
             body: state.lastScan == null && !state.isDemo
-                ? 'İlk tarama tamamlandığında, onaylanan kurulumlar burada görünür.'
-                : 'Son taramada eşiği geçen kısa vade kurulumu çıkmadı. Pusula zorla sinyal üretmez.',
+                ? 'Tarama bekleniyor.'
+                : 'Seçili kriterde onaylı sinyal yok.',
           )
         else
           Card(
@@ -472,10 +430,26 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
                 children: [
                   for (final (i, sig) in openSignals.indexed) ...[
                     if (i > 0) Divider(color: p.border.withValues(alpha: 0.45)),
-                    _PhantomSignalRow(
-                      signal: sig,
-                      currentPrice: state.priceOf(sig.instrument),
-                      onTap: () => _showSignalModal(context, sig, state.priceOf(sig.instrument)),
+                    Builder(
+                      builder: (context) {
+                        final isDaily = classifyHorizon(sig) == InvestmentHorizon.daily;
+                        final allocTry = isDaily
+                            ? breakdown.dailyPerSignalTry
+                            : (recAllocBySymbol[sig.instrument.symbol.toUpperCase()] ?? 0.0);
+                        return _PhantomSignalRow(
+                          signal: sig,
+                          currentPrice: state.priceOf(sig.instrument),
+                          allocatedTry: allocTry,
+                          usdTryRate: state.settings.usdTryRate,
+                          onTap: () => _showSignalModal(
+                            context,
+                            sig,
+                            state.priceOf(sig.instrument),
+                            allocatedTry: allocTry,
+                            usdTryRate: state.settings.usdTryRate,
+                          ),
+                        );
+                      },
                     ),
                   ],
                 ],
@@ -488,7 +462,7 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
             const Expanded(
               child: SectionTitle(
                 'Piyasa ›',
-                subtitle: 'BIST fiyatları ₺, Kripto fiyatları \$ (yalnızca belirlediğin 10 coin).',
+                subtitle: 'BIST (₺) · Kripto 10 coin (\$)',
               ),
             ),
             Padding(
@@ -706,10 +680,12 @@ class _OzetScreenState extends ConsumerState<OzetScreen> {
 class _PhantomHeroSection extends StatelessWidget {
   const _PhantomHeroSection({
     required this.state,
+    required this.breakdown,
     required this.onSelectBudget,
   });
 
   final PusulaAppState state;
+  final HorizonBudgetBreakdown breakdown;
   final VoidCallback onSelectBudget;
 
   @override
@@ -717,7 +693,7 @@ class _PhantomHeroSection extends StatelessWidget {
     final p = PusulaPalette.of(context);
     final alloc = state.currentReport.newAllocation;
     final budget = state.settings.budgetAmount;
-    final investedTry = budget * alloc.investedWeightPct / 100.0;
+    final investedTry = breakdown.mainInvestedTry + breakdown.dailyLimitTry;
     final has = alloc.hasRecommendations;
     final scan = state.lastScan;
 
@@ -811,10 +787,12 @@ class _PhantomHeroSection extends StatelessWidget {
 class _PhantomCashCapsule extends StatelessWidget {
   const _PhantomCashCapsule({
     required this.state,
+    required this.breakdown,
     required this.onTap,
   });
 
   final PusulaAppState state;
+  final HorizonBudgetBreakdown breakdown;
   final VoidCallback onTap;
 
   @override
@@ -822,7 +800,8 @@ class _PhantomCashCapsule extends StatelessWidget {
     final p = PusulaPalette.of(context);
     final alloc = state.currentReport.newAllocation;
     final budget = state.settings.budgetAmount;
-    final cashTry = budget * alloc.cashWeightPct / 100.0;
+    final cashTry = breakdown.cashReserveTry;
+    final cashPct = budget > 0 ? (cashTry / budget) * 100.0 : alloc.cashWeightPct;
     final riskFraction =
         alloc.appetite.maxTotalRiskPct <= 0 ? 0.0 : alloc.totalOpenRiskPct / alloc.appetite.maxTotalRiskPct;
 
@@ -860,7 +839,9 @@ class _PhantomCashCapsule extends StatelessWidget {
                         style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
                       ),
                       Text(
-                        'BIST ${Fmt.pct(alloc.bistTotalWeightPct, decimals: 0)} · Kripto ${Fmt.pct(alloc.cryptoTotalWeightPct, decimals: 0)}',
+                        'Günlük Limit ${Fmt.currencyTry(breakdown.dailyLimitTry)} · BIST ${Fmt.pct(alloc.bistTotalWeightPct, decimals: 0)} · Kripto ${Fmt.pct(alloc.cryptoTotalWeightPct, decimals: 0)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(fontSize: 11.5, color: p.textDim, fontWeight: FontWeight.w500),
                       ),
                     ],
@@ -878,7 +859,7 @@ class _PhantomCashCapsule extends StatelessWidget {
                       ),
                     ),
                     Text(
-                      Fmt.pct(alloc.cashWeightPct, decimals: 0),
+                      Fmt.pct(cashPct, decimals: 0),
                       style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: p.textDim),
                     ),
                   ],
@@ -891,12 +872,16 @@ class _PhantomCashCapsule extends StatelessWidget {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Açık risk ${Fmt.pct(alloc.totalOpenRiskPct, decimals: 2)} / sınır ${Fmt.pct(alloc.appetite.maxTotalRiskPct)}',
-                  style: TextStyle(fontSize: 11, color: p.textDim, fontWeight: FontWeight.w600),
+                Expanded(
+                  child: Text(
+                    'Risk ${Fmt.pct(alloc.totalOpenRiskPct, decimals: 2)} / ${Fmt.pct(alloc.appetite.maxTotalRiskPct)} · Bütçe Gir',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 11, color: p.textDim, fontWeight: FontWeight.w600),
+                  ),
                 ),
                 Text(
-                  'Ayarla ›',
+                  'Düzenle ›',
                   style: TextStyle(fontSize: 11, color: p.accent, fontWeight: FontWeight.w700),
                 ),
               ],
@@ -912,11 +897,15 @@ class _PhantomSignalRow extends StatelessWidget {
   const _PhantomSignalRow({
     required this.signal,
     required this.currentPrice,
+    this.allocatedTry = 0.0,
+    this.usdTryRate = 36.50,
     required this.onTap,
   });
 
   final SignalRecord signal;
   final double? currentPrice;
+  final double allocatedTry;
+  final double usdTryRate;
   final VoidCallback onTap;
 
   @override
@@ -924,6 +913,10 @@ class _PhantomSignalRow extends StatelessWidget {
     final p = PusulaPalette.of(context);
     final price = currentPrice ?? signal.entryPrice;
     final pctToT2 = signal.entryPrice <= 0 ? 0.0 : ((signal.target2 - signal.entryPrice) / signal.entryPrice) * 100.0;
+    final horizon = classifyHorizon(signal);
+    final plan = allocatedTry > 0
+        ? OrderSizingPlan.fromSignal(signal: signal, allocatedTry: allocatedTry, usdTryRate: usdTryRate)
+        : null;
 
     return InkWell(
       onTap: onTap,
@@ -938,15 +931,25 @@ class _PhantomSignalRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    signal.instrument.short,
-                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(
+                        signal.instrument.short,
+                        style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w800),
+                      ),
+                      Tag(horizon.label, color: p.accent),
+                    ],
                   ),
                   Text(
-                    '${signal.strategy.label} · Güven ${signal.confidence.total}',
+                    plan != null
+                        ? '${Fmt.currencyTry(plan.allocatedTry)} · ${plan.qtyBuyLabel()} AL · H2 ${plan.qtyT2Label()} sat'
+                        : '${signal.strategy.label} · Skor ${signal.confidence.total}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: p.textDim),
+                    style: TextStyle(fontSize: 11.5, color: plan != null ? p.profit : p.textDim, fontWeight: FontWeight.w600),
                   ),
                 ],
               ),
@@ -975,6 +978,138 @@ class _PhantomSignalRow extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BudgetRiskSheet extends ConsumerStatefulWidget {
+  const _BudgetRiskSheet({required this.controller});
+
+  final PusulaController controller;
+
+  @override
+  ConsumerState<_BudgetRiskSheet> createState() => _BudgetRiskSheetState();
+}
+
+class _BudgetRiskSheetState extends ConsumerState<_BudgetRiskSheet> {
+  late final TextEditingController _budgetCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    final current = ref.read(pusulaControllerProvider).settings.budgetAmount;
+    _budgetCtrl = TextEditingController(text: current.round().toString());
+  }
+
+  @override
+  void dispose() {
+    _budgetCtrl.dispose();
+    super.dispose();
+  }
+
+  void _applyTypedBudget() {
+    final parsed = parseTryInput(_budgetCtrl.text);
+    if (parsed == null) return;
+    widget.controller.updateBudget(parsed);
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final st = ref.watch(pusulaControllerProvider);
+    final p = PusulaPalette.of(context);
+    final s = st.settings;
+
+    return SafeArea(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(20, 14, 20, MediaQuery.viewInsetsOf(context).bottom + 20),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Bütçe, Mod & Risk (Spot)',
+                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Kapat',
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+              const Gap(8),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      key: const Key('input_custom_budget_try'),
+                      controller: _budgetCtrl,
+                      keyboardType: TextInputType.number,
+                      onSubmitted: (_) => _applyTypedBudget(),
+                      decoration: InputDecoration(
+                        labelText: 'Portföy Bütçesi (₺)',
+                        prefixText: '₺ ',
+                        isDense: true,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    key: const Key('btn_apply_custom_budget'),
+                    onPressed: _applyTypedBudget,
+                    child: const Text('Uygula'),
+                  ),
+                ],
+              ),
+              const Gap(10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final amt in const [50000.0, 100000.0, 250000.0, 500000.0, 1000000.0])
+                    ChoiceChip(
+                      label: Text(amt >= 1000000 ? '1M ₺' : '${(amt / 1000).toStringAsFixed(0)}B ₺'),
+                      selected: (s.budgetAmount - amt).abs() < 1,
+                      onSelected: (_) {
+                        _budgetCtrl.text = amt.round().toString();
+                        widget.controller.updateBudget(amt);
+                      },
+                    ),
+                ],
+              ),
+              const Gap(14),
+              Text('Seçim Modu', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: p.textDim)),
+              const Gap(6),
+              PortfolioModeSelector(
+                autoKey: const Key('sheet_btn_mode_auto'),
+                customKey: const Key('sheet_btn_mode_custom'),
+                userSelected: s.isUserSelectedMode,
+                selectedCount: s.favoriteSymbols.length,
+                onModeChanged: (userSel) => widget.controller.setPortfolioSelectionMode(userSelected: userSel),
+              ),
+              const Gap(14),
+              Text('Risk İştahı', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: p.textDim)),
+              const Gap(6),
+              SegmentedButton<RiskAppetite>(
+                showSelectedIcon: false,
+                segments: [
+                  for (final app in RiskAppetite.values)
+                    ButtonSegment<RiskAppetite>(value: app, label: Text(app.label)),
+                ],
+                selected: {s.riskAppetite},
+                onSelectionChanged: (sel) => widget.controller.updateRiskAppetite(sel.first),
+              ),
+            ],
+          ),
         ),
       ),
     );
