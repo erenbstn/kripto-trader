@@ -107,9 +107,9 @@ class AyarScreen extends ConsumerWidget {
               ),
               SwitchListTile(
                 key: const Key('switch_dark_mode'),
-                title: const Text('Koyu Tema', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                title: const Text('Koyu Tema (Phantom OLED)', style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
                 subtitle: Text(
-                  'Varsayılan açık tema "GÜNDÜZ" (#F6F4EF) önerilir.',
+                  'Phantom esintili koyu OLED tema (#08080A, varsayılan açık). Kapatırsanız açık Gündüz temasına geçer.',
                   style: TextStyle(fontSize: 12, color: p.textDim),
                 ),
                 value: s.darkMode,

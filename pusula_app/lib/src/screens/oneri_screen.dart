@@ -53,9 +53,20 @@ class _OneriScreenState extends ConsumerState<OneriScreen> {
 
   List<Widget> _recommendations(BuildContext context, PusulaAppState state) {
     final alloc = state.currentReport.newAllocation;
+    final query = ref.watch(searchQueryProvider).trim().toLowerCase();
+    bool matches(Instrument ins) =>
+        query.isEmpty ||
+        ins.symbol.toLowerCase().contains(query) ||
+        ins.short.toLowerCase().contains(query) ||
+        ins.name.toLowerCase().contains(query);
+
     final recs = <WeeklyRecommendation>[
-      if (_marketFilter == null || _marketFilter == Market.bist) ...alloc.bistRecommendations,
-      if (_marketFilter == null || _marketFilter == Market.crypto) ...alloc.cryptoRecommendations,
+      if (_marketFilter == null || _marketFilter == Market.bist)
+        for (final r in alloc.bistRecommendations)
+          if (matches(r.instrument)) r,
+      if (_marketFilter == null || _marketFilter == Market.crypto)
+        for (final r in alloc.cryptoRecommendations)
+          if (matches(r.instrument)) r,
     ];
     final scan = state.lastScan;
     final weeklyMisses = scan == null ? const <ScanCandidate>[] : [for (final c in scan.nearMisses) if (c.weekly) c];

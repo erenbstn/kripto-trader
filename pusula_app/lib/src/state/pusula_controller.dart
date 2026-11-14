@@ -9,7 +9,6 @@ import '../background/background_scheduler.dart';
 import '../notifications/notification_engine.dart';
 import '../storage/app_settings.dart';
 import '../storage/sqlite_storage.dart';
-import '../theme/gunduz_theme.dart';
 import '../update/app_updater.dart';
 import '../widgets/donut_3d_chart.dart';
 import 'live_data.dart';
@@ -39,6 +38,9 @@ class PusulaAppState {
     this.lastScan,
     this.scanProgress,
     this.updateState = const AppUpdateState.idle(),
+    this.toastMessage,
+    this.toastVisible = false,
+    this.toastPositive = true,
   });
 
   final AppSettings settings;
@@ -70,6 +72,11 @@ class PusulaAppState {
   /// GitHub Releases üzerinden uygulama içi APK güncelleme durumu.
   final AppUpdateState updateState;
 
+  /// Phantom tarzı üst yüzen durum kapsülü (ör. `✓ Tarama tamamlandı`).
+  final String? toastMessage;
+  final bool toastVisible;
+  final bool toastPositive;
+
   /// Piyasa rejimleri (son taramadan).
   Map<Market, RegimeReport> get regimes => lastScan?.regimes ?? const {};
 
@@ -92,16 +99,16 @@ class PusulaAppState {
   /// 3D / 2D halka grafik için bütçe dilimlerini üretir.
   List<DonutSliceData> get donutSlices {
     const bistPalette = [
-      GunduzColors.accent,
-      GunduzColors.accentDark,
-      Color(0xFF4F6BED),
-      Color(0xFF2E5AAC),
+      Color(0xFFAB9FF2),
+      Color(0xFF818CF8),
+      Color(0xFF6366F1),
+      Color(0xFF38BDF8),
     ];
     const cryptoPalette = [
-      GunduzColors.coral,
-      Color(0xFFE07A5F),
-      Color(0xFFC85A32),
-      Color(0xFFB54824),
+      Color(0xFF26D07C),
+      Color(0xFFF7931A),
+      Color(0xFF14F195),
+      Color(0xFFFB7185),
     ];
 
     final alloc = currentReport.newAllocation;
@@ -169,6 +176,9 @@ class PusulaAppState {
     ScanOutcome? lastScan,
     double? scanProgress,
     AppUpdateState? updateState,
+    String? toastMessage,
+    bool? toastVisible,
+    bool? toastPositive,
   }) =>
       PusulaAppState(
         settings: settings ?? this.settings,
@@ -190,6 +200,9 @@ class PusulaAppState {
         lastScan: lastScan ?? this.lastScan,
         scanProgress: scanProgress,
         updateState: updateState ?? this.updateState,
+        toastMessage: toastMessage ?? this.toastMessage,
+        toastVisible: toastVisible ?? this.toastVisible,
+        toastPositive: toastPositive ?? this.toastPositive,
       );
 }
 
@@ -222,6 +235,9 @@ final dataServiceFactoryProvider = Provider<MarketDataService Function()?>((ref)
 final appUpdateServiceProvider = Provider<AppUpdateService?>((ref) {
   return null;
 });
+
+/// Alt Phantom arama çubuğundan beslenen küresel sembol/varlık filtresi.
+final searchQueryProvider = StateProvider<String>((ref) => '');
 
 final pusulaControllerProvider = StateNotifierProvider<PusulaController, PusulaAppState>((ref) {
   final storage = ref.watch(storageBundleProvider);
@@ -275,6 +291,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
   final NotificationCoordinator _notificationCoordinator;
   final BackgroundScheduler _scheduler;
   final StrategyVersionStore _versionStore = MemoryStrategyVersionStore();
+  Timer? _toastTimer;
 
   /// Başlangıç yüklemesi (ve varsa ilk canlı tarama) tamamlandığında biten gelecek; testler bunu bekler.
   late final Future<void> ready;
@@ -284,13 +301,17 @@ class PusulaController extends StateNotifier<PusulaAppState> {
 
   Future<void> _init() async {
     await _hydrateFromStorage();
-    final installed = await _updater.installedVersion();
-    if (mounted) {
-      state = state.copyWith(
-        updateState: state.updateState.copyWith(currentVersion: installed),
-        statusMessage: state.statusMessage,
-        scanProgress: state.scanProgress,
-      );
+    try {
+      final installed = await _updater.installedVersion();
+      if (mounted) {
+        state = state.copyWith(
+          updateState: state.updateState.copyWith(currentVersion: installed),
+          statusMessage: state.statusMessage,
+          scanProgress: state.scanProgress,
+        );
+      }
+    } catch (e) {
+      debugPrint('Pusula sürüm okuma hatası: $e');
     }
     if (enableLiveNetwork && !demoSeed && mounted) {
       if (!kIsWeb && state.settings.autoCheckUpdates && state.settings.updateRepo.isNotEmpty) {
@@ -302,8 +323,36 @@ class PusulaController extends StateNotifier<PusulaAppState> {
 
   @override
   void dispose() {
+    _toastTimer?.cancel();
     if (_ownsUpdater) _updater.dispose();
     super.dispose();
+  }
+
+  void dismissToast() {
+    _toastTimer?.cancel();
+    if (!mounted) return;
+    state = state.copyWith(
+      toastVisible: false,
+      statusMessage: state.statusMessage,
+      scanProgress: state.scanProgress,
+    );
+  }
+
+  void _showToast(String message, {bool positive = true, bool autoHide = true}) {
+    _toastTimer?.cancel();
+    if (!mounted) return;
+    state = state.copyWith(
+      toastMessage: message,
+      toastVisible: true,
+      toastPositive: positive,
+      statusMessage: state.statusMessage,
+      scanProgress: state.scanProgress,
+    );
+    if (autoHide && !demoSeed) {
+      _toastTimer = Timer(const Duration(seconds: 4), () {
+        if (mounted) dismissToast();
+      });
+    }
   }
 
   static StrategyOptimizationProposal _emptyProposal(DateTime now) => StrategyOptimizationProposal(
@@ -945,6 +994,9 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       lastRefreshedAt: now,
       isDemo: true,
       statusMessage: 'Örnek veri gösteriliyor.',
+      toastMessage: 'Portföy güncel',
+      toastVisible: true,
+      toastPositive: true,
     );
   }
 
@@ -953,41 +1005,59 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       loaded.activeStrategyVersion == '2.0.0' ? loaded.copyWith(activeStrategyVersion: kStrategyVersion) : loaded;
 
   Future<void> _hydrateFromStorage() async {
-    final loadedSettings = _migrateSettings(await storage.settingsStore.load());
+    AppSettings loadedSettings = state.settings;
+    try {
+      loadedSettings = _migrateSettings(await storage.settingsStore.load());
+    } catch (e) {
+      debugPrint('Pusula ayar yükleme hatası (varsayılan kullanılıyor): $e');
+    }
 
     if (demoSeed) {
-      // Örnek kip: örnek kayıtlar yalnızca bellek içi depoya yazılır.
-      for (final s in state.allSignals) {
-        await storage.journalStore.save(s);
-      }
-      await storage.reportStore.save(state.currentReport);
-      if (loadedSettings != state.settings) {
-        await _applySettings(loadedSettings);
+      try {
+        // Örnek kip: örnek kayıtlar yalnızca bellek içi depoya yazılır.
+        for (final s in state.allSignals) {
+          await storage.journalStore.save(s);
+        }
+        await storage.reportStore.save(state.currentReport);
+        if (loadedSettings != state.settings) {
+          await _applySettings(loadedSettings);
+        }
+      } catch (e) {
+        debugPrint('Pusula demo depo yazma hatası: $e');
       }
       return;
     }
 
-    // Gerçek kip: önceki sürümlerin diske yazdığı ÖRNEK sinyaller (kimliği `sig_` ile başlar) ve onlardan
-    // üretilmiş raporlar temizlenir. O sürümlerde gerçek huni çalışmadığı için kaybolan gerçek kayıt yoktur.
-    var signals = await storage.journalStore.allSignals();
-    if (signals.any((s) => s.id.startsWith('sig_'))) {
-      await storage.journalStore.clear();
-      await storage.reportStore.clear();
-      signals = const [];
+    try {
+      // Gerçek kip: önceki sürümlerin diske yazdığı ÖRNEK sinyaller (kimliği `sig_` ile başlar) ve onlardan
+      // üretilmiş raporlar temizlenir. O sürümlerde gerçek huni çalışmadığı için kaybolan gerçek kayıt yoktur.
+      var signals = await storage.journalStore.allSignals();
+      if (signals.any((s) => s.id.startsWith('sig_'))) {
+        await storage.journalStore.clear();
+        await storage.reportStore.clear();
+        signals = const [];
+      }
+      final reports = await storage.reportStore.allReports();
+      final active = await storage.journalStore.activeSignals();
+      if (!mounted) return;
+      state = state.copyWith(
+        settings: loadedSettings,
+        allSignals: signals,
+        activeSignals: active,
+        archivedReports: reports,
+        currentReport: reports.isEmpty ? state.currentReport : reports.first,
+        performanceCurve: performanceCurveFrom(reports),
+        statusMessage: signals.isEmpty ? 'Henüz tarama yapılmadı.' : 'Kayıtlı sinyaller yüklendi; tarama bekleniyor.',
+      );
+      await _applySettings(loadedSettings);
+    } catch (e) {
+      debugPrint('Pusula yerel veritabanı kurtarma modu: $e');
+      if (!mounted) return;
+      state = state.copyWith(
+        settings: loadedSettings,
+        statusMessage: 'Yerel veritabanı sıfırlandı; canlı tarama bekleniyor.',
+      );
     }
-    final reports = await storage.reportStore.allReports();
-    final active = await storage.journalStore.activeSignals();
-    if (!mounted) return;
-    state = state.copyWith(
-      settings: loadedSettings,
-      allSignals: signals,
-      activeSignals: active,
-      archivedReports: reports,
-      currentReport: reports.isEmpty ? state.currentReport : reports.first,
-      performanceCurve: performanceCurveFrom(reports),
-      statusMessage: signals.isEmpty ? 'Henüz tarama yapılmadı.' : 'Kayıtlı sinyaller yüklendi; tarama bekleniyor.',
-    );
-    await _applySettings(loadedSettings);
   }
 
   /// Canlı veriyi çeker, analiz hunisini tüm evrende koşturur ve ekran durumunu GERÇEK sonuçla günceller.
@@ -997,13 +1067,22 @@ class PusulaController extends StateNotifier<PusulaAppState> {
   Future<void> refreshLiveMarketData({bool forceRefresh = false}) async {
     if (!mounted || state.isLoading) return;
     if (demoSeed) {
-      state = state.copyWith(statusMessage: 'Örnek veri kipinde canlı tarama kapalıdır.');
+      state = state.copyWith(
+        statusMessage: 'Örnek veri kipinde canlı tarama kapalıdır.',
+        toastMessage: 'Örnek mod · Tarama kapalı',
+        toastVisible: true,
+        toastPositive: true,
+      );
       return;
     }
+    _toastTimer?.cancel();
     state = state.copyWith(
       isLoading: true,
       scanProgress: 0.0,
       statusMessage: 'Piyasa taranıyor…',
+      toastMessage: 'Piyasa taranıyor…',
+      toastVisible: true,
+      toastPositive: true,
     );
 
     final runner = ScanRunner(
@@ -1048,6 +1127,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
         lastRefreshedAt: _clock().toUtc(),
         statusMessage: r.outcome.summaryTr,
       );
+      _showToast('Tarama tamamlandı · ${r.activeSignals.length} aktif sinyal');
     } catch (e) {
       if (!mounted) return;
       // Ayrıntı (URL, sorgu) kullanıcıya/loga taşınmaz; yalnızca hata türü gösterilir.
@@ -1055,6 +1135,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
         isLoading: false,
         statusMessage: 'Tarama tamamlanamadı (${e.runtimeType}). Önceki sonuçlar korunuyor.',
       );
+      _showToast('Bağlantı hatası (${e.runtimeType})', positive: false);
     }
   }
 
@@ -1087,14 +1168,22 @@ class PusulaController extends StateNotifier<PusulaAppState> {
       statusMessage: state.statusMessage,
       scanProgress: state.scanProgress,
     );
-    await storage.settingsStore.save(next);
-    final schedule = await _scheduler.syncSchedule(liveMonitorEnabled: next.liveMonitorEnabled);
-    if (mounted) {
-      state = state.copyWith(
-        scheduleSnapshot: schedule,
-        statusMessage: state.statusMessage,
-        scanProgress: state.scanProgress,
-      );
+    try {
+      await storage.settingsStore.save(next);
+    } catch (e) {
+      debugPrint('Pusula ayar kaydetme hatası: $e');
+    }
+    try {
+      final schedule = await _scheduler.syncSchedule(liveMonitorEnabled: next.liveMonitorEnabled);
+      if (mounted) {
+        state = state.copyWith(
+          scheduleSnapshot: schedule,
+          statusMessage: state.statusMessage,
+          scanProgress: state.scanProgress,
+        );
+      }
+    } catch (e) {
+      debugPrint('Pusula zamanlama eşitleme hatası: $e');
     }
   }
 
@@ -1260,6 +1349,7 @@ class PusulaController extends StateNotifier<PusulaAppState> {
           statusMessage: state.statusMessage,
           scanProgress: state.scanProgress,
         );
+        _showToast('Güncelleme hazır · ${rel.version.label}');
       } else {
         state = state.copyWith(
           updateState: state.updateState.copyWith(

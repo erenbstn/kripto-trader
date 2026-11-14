@@ -8,7 +8,7 @@ class AppSettings {
   const AppSettings({
     this.budgetAmount = 100000.0,
     this.riskAppetite = RiskAppetite.balanced,
-    this.darkMode = false,
+    this.darkMode = true,
     this.reduceAnimations = false,
     this.batterySaverMode = false,
     this.notifySignal = true,
@@ -129,7 +129,7 @@ class AppSettings {
                 orElse: () => RiskAppetite.balanced,
               )
             : RiskAppetite.balanced,
-        darkMode: (j['darkMode'] as bool?) ?? false,
+        darkMode: (j['darkMode'] as bool?) ?? true,
         reduceAnimations: (j['reduceAnimations'] as bool?) ?? false,
         batterySaverMode: (j['batterySaverMode'] as bool?) ?? false,
         notifySignal: (j['notifySignal'] as bool?) ?? true,

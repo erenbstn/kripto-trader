@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:pusula_app/main.dart';
 import 'package:pusula_app/src/state/pusula_controller.dart';
 import 'package:pusula_app/src/theme/gunduz_theme.dart';
+import 'package:pusula_app/src/widgets/common.dart';
 
 void main() {
   void setPhoneViewport(WidgetTester tester) {
@@ -24,18 +25,26 @@ void main() {
     });
   }
 
-  group('Faz 5 — GÜNDÜZ Arayüzü, 3D Halka ve 4 Sekme Widget Testleri', () {
-    testWidgets('Varsayılan GÜNDÜZ teması, 3D halka ve Yatırım tavsiyesi değildir şeridi görünür', (tester) async {
+  group('Faz 5 & Phantom UI — 3D Halka, Arama, Bildirim Kapsülü ve 4 Sekme Testleri', () {
+    testWidgets('Varsayılan Phantom OLED koyu teması, Nakit kapsülü, toast animasyonu ve 3D halka görünür',
+        (tester) async {
       setPhoneViewport(tester);
       await tester.pumpWidget(const ProviderScope(child: PusulaApp()));
       await tester.pumpAndSettle();
 
-      // GÜNDÜZ zemin rengi (#F6F4EF) kontrolü
+      // Phantom OLED koyu zemin rengi (#08080A) ve varsayılan koyu mod kontrolü
       final materialApp = tester.widget<MaterialApp>(find.byType(MaterialApp));
-      expect(materialApp.theme?.scaffoldBackgroundColor, GunduzColors.background);
+      expect(materialApp.themeMode, ThemeMode.dark);
+      expect(materialApp.darkTheme?.scaffoldBackgroundColor, GunduzColors.darkBackground);
 
       // Yatırım tavsiyesi değildir uyarısı görünür
       expect(find.textContaining('Yatırım tavsiyesi değildir'), findsWidgets);
+
+      // Phantom bileşenleri: Nakit Koruma kapsülü, yüzen toast kapsülü ve alt arama çubuğu
+      expect(find.byKey(const Key('phantom_cash_capsule')), findsOneWidget);
+      expect(find.byKey(const Key('phantom_toast_capsule')), findsOneWidget);
+      expect(find.byKey(const Key('input_global_search')), findsOneWidget);
+      expect(find.byKey(const Key('btn_refresh_live_data')), findsOneWidget);
 
       // 3D bütçe ağırlık halkası (varsayılan 3D mod) çizilir
       expect(find.byKey(const ValueKey('donut_painter_3d')), findsOneWidget);
@@ -51,6 +60,11 @@ void main() {
       expect(find.textContaining('Dilim Detayı'), findsOneWidget);
       await tester.tap(find.byIcon(Icons.close));
       await tester.pumpAndSettle();
+
+      // Alt arama çubuğuna yazıldığında listeler filtrelenir
+      await tester.enterText(find.byKey(const Key('input_global_search')), 'SOL');
+      await tester.pumpAndSettle();
+      expect(find.textContaining('SOL'), findsWidgets);
     });
 
     testWidgets('Öneri sekmesinde önce "Geçen hafta raporu: henüz veri yok", sonra yeni öneriler görünür',
@@ -116,9 +130,13 @@ void main() {
       await tester.tap(find.text('Ayar'));
       await tester.pumpAndSettle();
 
+      final pageScrollable = find.descendant(
+        of: find.byType(PageBody),
+        matching: find.byType(Scrollable),
+      );
       final privacyBtn = find.byKey(const Key('btn_privacy_and_legal'));
-      await tester.scrollUntilVisible(privacyBtn, 250);
-      await tester.ensureVisible(privacyBtn);
+      await tester.scrollUntilVisible(privacyBtn, 250, scrollable: pageScrollable);
+      await tester.drag(pageScrollable, const Offset(0, -120));
       await tester.pumpAndSettle();
       await tester.tap(privacyBtn);
       await tester.pumpAndSettle();

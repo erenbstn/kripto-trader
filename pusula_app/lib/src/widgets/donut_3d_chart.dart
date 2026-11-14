@@ -141,17 +141,17 @@ class _Donut3DChartState extends State<Donut3DChart> {
               ),
             ),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: GunduzColors.accent.withValues(alpha: 0.12),
-                borderRadius: BorderRadius.circular(8),
+                color: (isDark ? GunduzColors.phantomLavender : GunduzColors.accent).withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(999),
               ),
               child: Text(
                 widget.flat2D ? '2D · Pil Dostu' : '3D Etkileşimli',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: GunduzColors.accent,
+                  color: isDark ? GunduzColors.phantomLavender : GunduzColors.accent,
                 ),
               ),
             ),
@@ -205,7 +205,7 @@ class _Donut3DChartState extends State<Donut3DChart> {
                     color: _selectedId == slice.id
                         ? slice.color.withValues(alpha: 0.18)
                         : (isDark ? GunduzColors.darkSubtleSurface : GunduzColors.subtleSurface),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(999),
                     border: Border.all(
                       color: _selectedId == slice.id
                           ? slice.color

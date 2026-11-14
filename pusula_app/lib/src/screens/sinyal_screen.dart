@@ -27,6 +27,7 @@ class _SinyalScreenState extends ConsumerState<SinyalScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(pusulaControllerProvider);
+    final query = ref.watch(searchQueryProvider).trim().toLowerCase();
     final shortTerm = state.currentReport.shortTermReport;
     final scan = state.lastScan;
     final misses = scan == null ? const <ScanCandidate>[] : [for (final c in scan.nearMisses) if (!c.weekly) c];
@@ -36,7 +37,11 @@ class _SinyalScreenState extends ConsumerState<SinyalScreen> {
         if ((_market == null || s.instrument.market == _market) &&
             (_status == _StatusFilter.all ||
                 (_status == _StatusFilter.open && s.isActive) ||
-                (_status == _StatusFilter.closed && s.isClosed)))
+                (_status == _StatusFilter.closed && s.isClosed)) &&
+            (query.isEmpty ||
+                s.instrument.symbol.toLowerCase().contains(query) ||
+                s.instrument.short.toLowerCase().contains(query) ||
+                s.instrument.name.toLowerCase().contains(query)))
           s,
     ];
 

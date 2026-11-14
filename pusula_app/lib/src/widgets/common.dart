@@ -47,6 +47,8 @@ class Fmt {
 
   static String tl(double v) => '${number(v, decimals: 0)} TL';
 
+  static String currencyTry(double v, {int decimals = 0}) => '₺${number(v, decimals: decimals)}';
+
   static String ago(DateTime t, DateTime now) {
     final d = now.toUtc().difference(t.toUtc());
     if (d.inMinutes < 1) return 'az önce';
@@ -102,7 +104,7 @@ class PageBody extends StatelessWidget {
         final wide = c.maxWidth >= PusulaSpace.wideBreakpoint - 96;
         if (!wide || secondary.isEmpty) {
           final list = ListView(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 104),
             children: [...primary, ...secondary],
           );
           if (!wide) return list;
@@ -111,7 +113,7 @@ class PageBody extends StatelessWidget {
           );
         }
         return SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(28, 8, 28, 40),
+          padding: const EdgeInsets.fromLTRB(28, 12, 28, 64),
           child: Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: PusulaSpace.maxContentWidth),
@@ -746,6 +748,103 @@ class CardHeader extends StatelessWidget {
         ),
         ?trailing,
       ],
+    );
+  }
+}
+
+/// Phantom tarzı dairesel varlık (BIST hisse / Kripto) simgesi.
+class SymbolAvatarBadge extends StatelessWidget {
+  const SymbolAvatarBadge({
+    super.key,
+    required this.instrument,
+    this.size = 42,
+  });
+
+  final Instrument instrument;
+  final double size;
+
+  static Color badgeColor(Instrument ins) {
+    final s = ins.symbol.toUpperCase();
+    if (s.startsWith('BTC')) return const Color(0xFFF7931A);
+    if (s.startsWith('ETH')) return const Color(0xFF627EEA);
+    if (s.startsWith('SOL')) return const Color(0xFF14F195);
+    if (s.startsWith('XRP')) return const Color(0xFF25A768);
+    if (s.startsWith('BNB')) return const Color(0xFFF3BA2F);
+    if (s.startsWith('LINK')) return const Color(0xFF375BD2);
+    if (s.startsWith('AVAX')) return const Color(0xFFE84142);
+    if (ins.market == Market.bist) {
+      const bistPalette = [
+        Color(0xFFAB9FF2),
+        Color(0xFF38BDF8),
+        Color(0xFF818CF8),
+        Color(0xFF2DD4BF),
+        Color(0xFFC084FC),
+      ];
+      return bistPalette[s.hashCode.abs() % bistPalette.length];
+    }
+    const cryptoPalette = [
+      Color(0xFF26D07C),
+      Color(0xFF38BDF8),
+      Color(0xFFA78BFA),
+      Color(0xFFFB923C),
+    ];
+    return cryptoPalette[s.hashCode.abs() % cryptoPalette.length];
+  }
+
+  static String glyphFor(Instrument ins) {
+    final s = ins.short.toUpperCase();
+    if (s == 'BTC') return '₿';
+    if (s == 'ETH') return 'Ξ';
+    if (s == 'SOL') return '◎';
+    return s.length <= 3 ? s : s.substring(0, 3);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final p = PusulaPalette.of(context);
+    final bg = badgeColor(instrument);
+    final glyph = glyphFor(instrument);
+    final darkInk = bg.computeLuminance() > 0.45 ? const Color(0xFF08080A) : Colors.white;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: bg.withValues(alpha: p.isDark ? 0.92 : 0.95),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              glyph,
+              maxLines: 1,
+              style: TextStyle(
+                fontSize: glyph.length == 1 ? size * 0.48 : size * 0.28,
+                fontWeight: FontWeight.w800,
+                color: darkInk,
+                letterSpacing: -0.4,
+              ),
+            ),
+          ),
+          Positioned(
+            right: -1,
+            bottom: -1,
+            child: Container(
+              width: size * 0.34,
+              height: size * 0.34,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: instrument.market == Market.bist ? p.accent : p.coral,
+                border: Border.all(color: p.background, width: 1.8),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

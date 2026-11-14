@@ -15,17 +15,18 @@ class GunduzColors {
   static const Color border = Color(0xFFE2DDD3);
   static const Color subtleSurface = Color(0xFFEDEAE2);
 
-  // Koyu tema karşılıkları
-  static const Color darkBackground = Color(0xFF141418);
-  static const Color darkCard = Color(0xFF1E1E24);
-  static const Color darkTextPrimary = Color(0xFFF3F1EC);
-  static const Color darkTextSecondary = Color(0xFFA9A69E);
-  static const Color darkBorder = Color(0xFF2E2E38);
-  static const Color darkSubtleSurface = Color(0xFF25252E);
+  // Koyu tema karşılıkları (Phantom OLED paleti)
+  static const Color darkBackground = Color(0xFF08080A);
+  static const Color darkCard = Color(0xFF16161C);
+  static const Color darkTextPrimary = Color(0xFFF5F5F7);
+  static const Color darkTextSecondary = Color(0xFF8E8E99);
+  static const Color darkBorder = Color(0xFF24242E);
+  static const Color darkSubtleSurface = Color(0xFF1F1F28);
+  static const Color phantomLavender = Color(0xFFAB9FF2);
 
   // Kazanç / zarar renkleri (her zaman + / - işareti ve metinle birlikte kullanılır)
-  static const Color profitGreen = Color(0xFF1E7E48);
-  static const Color lossRed = Color(0xFFB83227);
+  static const Color profitGreen = Color(0xFF26D07C);
+  static const Color lossRed = Color(0xFFF2545B);
   static const Color neutralSlate = Color(0xFF6B7280);
 }
 
@@ -88,12 +89,12 @@ class PusulaPalette {
     border: GunduzColors.darkBorder,
     text: GunduzColors.darkTextPrimary,
     textDim: GunduzColors.darkTextSecondary,
-    accent: Color(0xFFA197F2),
-    accentSoft: Color(0xFF2B2850),
-    coral: Color(0xFFEF8257),
-    profit: Color(0xFF52C48B),
-    loss: Color(0xFFF0776B),
-    neutral: Color(0xFF9CA3AF),
+    accent: GunduzColors.phantomLavender,
+    accentSoft: Color(0xFF231F38),
+    coral: Color(0xFF38BDF8),
+    profit: Color(0xFF26D07C),
+    loss: Color(0xFFF2545B),
+    neutral: Color(0xFF8E8E99),
   );
 
   static PusulaPalette of(BuildContext context) =>
@@ -119,19 +120,21 @@ class PusulaSpace {
 class GunduzTheme {
   const GunduzTheme._();
 
-  static const double cardRadius = 16.0;
+  static const double cardRadius = 20.0;
 
   static ThemeData light() => _build(PusulaPalette.light);
   static ThemeData dark() => _build(PusulaPalette.dark);
 
   static ThemeData _build(PusulaPalette p) {
+    final primaryAccent = p.isDark ? p.accent : GunduzColors.accent;
+    final onPrimaryColor = p.isDark ? const Color(0xFF08080A) : Colors.white;
     final scheme = (p.isDark ? const ColorScheme.dark() : const ColorScheme.light()).copyWith(
-      primary: GunduzColors.accent,
-      onPrimary: Colors.white,
+      primary: primaryAccent,
+      onPrimary: onPrimaryColor,
       primaryContainer: p.accentSoft,
       onPrimaryContainer: p.accent,
-      secondary: GunduzColors.coral,
-      onSecondary: Colors.white,
+      secondary: p.coral,
+      onSecondary: onPrimaryColor,
       secondaryContainer: p.accentSoft,
       onSecondaryContainer: p.accent,
       surface: p.card,
@@ -173,7 +176,7 @@ class GunduzTheme {
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(cardRadius),
-          side: BorderSide(color: p.border, width: 1),
+          side: BorderSide(color: p.isDark ? p.border.withValues(alpha: 0.55) : p.border, width: 1),
         ),
       ),
       dividerTheme: DividerThemeData(color: p.border, thickness: 1, space: 1),
@@ -197,7 +200,7 @@ class GunduzTheme {
         }),
       ),
       navigationRailTheme: NavigationRailThemeData(
-        backgroundColor: p.card,
+        backgroundColor: p.isDark ? p.background : p.card,
         indicatorColor: p.accentSoft,
         selectedIconTheme: IconThemeData(color: p.accent),
         unselectedIconTheme: IconThemeData(color: p.textDim),
@@ -222,24 +225,24 @@ class GunduzTheme {
         selectedColor: p.accentSoft,
         side: BorderSide(color: p.border),
         labelStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: p.text),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
         showCheckmark: false,
       ),
       switchTheme: SwitchThemeData(
         thumbColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected) ? Colors.white : p.textDim,
+          (states) => states.contains(WidgetState.selected) ? onPrimaryColor : p.textDim,
         ),
         trackColor: WidgetStateProperty.resolveWith(
-          (states) => states.contains(WidgetState.selected) ? GunduzColors.accent : p.subtle,
+          (states) => states.contains(WidgetState.selected) ? primaryAccent : p.subtle,
         ),
         trackOutlineColor: WidgetStatePropertyAll(p.border),
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          backgroundColor: GunduzColors.accent,
-          foregroundColor: Colors.white,
+          backgroundColor: primaryAccent,
+          foregroundColor: onPrimaryColor,
           minimumSize: const Size(48, 44),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
         ),
       ),
@@ -248,7 +251,7 @@ class GunduzTheme {
           foregroundColor: p.accent,
           minimumSize: const Size(48, 44),
           side: BorderSide(color: p.border),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
         ),
       ),
@@ -265,10 +268,10 @@ class GunduzTheme {
       dialogTheme: DialogThemeData(
         backgroundColor: p.card,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
       ),
       progressIndicatorTheme: ProgressIndicatorThemeData(
-        color: GunduzColors.accent,
+        color: primaryAccent,
         linearTrackColor: p.subtle,
       ),
     );
@@ -286,11 +289,11 @@ class DisclaimerBanner extends StatelessWidget {
       container: true,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: p.subtle,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: p.border),
+          color: p.isDark ? const Color(0xFF111116) : p.subtle,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: p.border.withValues(alpha: p.isDark ? 0.55 : 1.0)),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

@@ -64,14 +64,18 @@ class MainActivity : FlutterActivity() {
                         result.success(allowed)
                     }
                     "openUnknownSourcesSettings" -> {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                            val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
-                                data = Uri.parse("package:$packageName")
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        try {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                val intent = Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                                    data = Uri.parse("package:$packageName")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                startActivity(intent)
                             }
-                            startActivity(intent)
+                            result.success(true)
+                        } catch (_: Throwable) {
+                            result.success(false)
                         }
-                        result.success(true)
                     }
                     "installApk" -> {
                         val path = call.argument<String>("path")
@@ -107,126 +111,136 @@ class MainActivity : FlutterActivity() {
             }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
             .setMethodCallHandler { call, result ->
-                when (call.method) {
-                    "schedulePeriodicScan" -> {
-                        val minutes = (call.argument<Number>("intervalMinutes")?.toLong() ?: 15L).coerceAtLeast(15L)
-                        val req = PeriodicWorkRequestBuilder<PusulaPeriodicScanWorker>(minutes, TimeUnit.MINUTES)
-                            .build()
-                        WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
-                            "pusula_periodic_scan",
-                            ExistingPeriodicWorkPolicy.KEEP,
-                            req
-                        )
-                        result.success(true)
-                    }
-                    "scheduleExactAlarms" -> {
-                        val sundayMs = call.argument<Number>("sundayReportMs")?.toLong()
-                        val bistOpenMs = call.argument<Number>("bistOpenMs")?.toLong()
-                        val bistCloseMs = call.argument<Number>("bistCloseMs")?.toLong()
-                        if (sundayMs != null) scheduleExact(101, "sunday_report", sundayMs)
-                        if (bistOpenMs != null) scheduleExact(102, "bist_open", bistOpenMs)
-                        if (bistCloseMs != null) scheduleExact(103, "bist_close", bistCloseMs)
-                        result.success(true)
-                    }
-                    "setLiveMonitor" -> {
-                        val enabled = call.argument<Boolean>("enabled") ?: false
-                        val svcIntent = Intent(applicationContext, PusulaLiveMonitorService::class.java)
-                        if (enabled) {
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                                applicationContext.startForegroundService(svcIntent)
-                            } else {
-                                applicationContext.startService(svcIntent)
-                            }
-                        } else {
-                            applicationContext.stopService(svcIntent)
-                        }
-                        result.success(enabled)
-                    }
-                    "isIgnoringBatteryOptimizations" -> {
-                        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-                        result.success(pm.isIgnoringBatteryOptimizations(packageName))
-                    }
-                    "requestIgnoreBatteryOptimizations" -> {
-                        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-                        if (!pm.isIgnoringBatteryOptimizations(packageName)) {
-                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                data = Uri.parse("package:$packageName")
-                            }
-                            startActivity(intent)
-                        }
-                        result.success(true)
-                    }
-                    "initNotificationChannels" -> {
-                        ensureChannels()
-                        result.success(true)
-                    }
-                    "showLocalNotification" -> {
-                        ensureChannels()
-                        val id = call.argument<Number>("id")?.toInt() ?: 1000
-                        val chId = call.argument<String>("channelId") ?: "pusula_signal"
-                        val title = call.argument<String>("title") ?: "Pusula"
-                        val body = call.argument<String>("body") ?: ""
-                        val high = call.argument<Boolean>("highPriority") ?: false
-                        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                        val notif = NotificationCompat.Builder(applicationContext, chId)
-                            .setSmallIcon(android.R.drawable.ic_dialog_info)
-                            .setContentTitle(title)
-                            .setContentText(body)
-                            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
-                            .setPriority(
-                                if (high) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT
+                try {
+                    when (call.method) {
+                        "schedulePeriodicScan" -> {
+                            val minutes = (call.argument<Number>("intervalMinutes")?.toLong() ?: 15L).coerceAtLeast(15L)
+                            val req = PeriodicWorkRequestBuilder<PusulaPeriodicScanWorker>(minutes, TimeUnit.MINUTES)
+                                .build()
+                            WorkManager.getInstance(applicationContext).enqueueUniquePeriodicWork(
+                                "pusula_periodic_scan",
+                                ExistingPeriodicWorkPolicy.KEEP,
+                                req
                             )
-                            .setAutoCancel(true)
-                            .build()
-                        nm.notify(id, notif)
-                        result.success(true)
+                            result.success(true)
+                        }
+                        "scheduleExactAlarms" -> {
+                            val sundayMs = call.argument<Number>("sundayReportMs")?.toLong()
+                            val bistOpenMs = call.argument<Number>("bistOpenMs")?.toLong()
+                            val bistCloseMs = call.argument<Number>("bistCloseMs")?.toLong()
+                            if (sundayMs != null) scheduleExact(101, "sunday_report", sundayMs)
+                            if (bistOpenMs != null) scheduleExact(102, "bist_open", bistOpenMs)
+                            if (bistCloseMs != null) scheduleExact(103, "bist_close", bistCloseMs)
+                            result.success(true)
+                        }
+                        "setLiveMonitor" -> {
+                            val enabled = call.argument<Boolean>("enabled") ?: false
+                            val svcIntent = Intent(applicationContext, PusulaLiveMonitorService::class.java)
+                            if (enabled) {
+                                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                                    applicationContext.startForegroundService(svcIntent)
+                                } else {
+                                    applicationContext.startService(svcIntent)
+                                }
+                            } else {
+                                applicationContext.stopService(svcIntent)
+                            }
+                            result.success(enabled)
+                        }
+                        "isIgnoringBatteryOptimizations" -> {
+                            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                            result.success(pm.isIgnoringBatteryOptimizations(packageName))
+                        }
+                        "requestIgnoreBatteryOptimizations" -> {
+                            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                            if (!pm.isIgnoringBatteryOptimizations(packageName)) {
+                                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = Uri.parse("package:$packageName")
+                                }
+                                startActivity(intent)
+                            }
+                            result.success(true)
+                        }
+                        "initNotificationChannels" -> {
+                            ensureChannels()
+                            result.success(true)
+                        }
+                        "showLocalNotification" -> {
+                            ensureChannels()
+                            val id = call.argument<Number>("id")?.toInt() ?: 1000
+                            val chId = call.argument<String>("channelId") ?: "pusula_signal"
+                            val title = call.argument<String>("title") ?: "Pusula"
+                            val body = call.argument<String>("body") ?: ""
+                            val high = call.argument<Boolean>("highPriority") ?: false
+                            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                            val notif = NotificationCompat.Builder(applicationContext, chId)
+                                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                                .setContentTitle(title)
+                                .setContentText(body)
+                                .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+                                .setPriority(
+                                    if (high) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT
+                                )
+                                .setAutoCancel(true)
+                                .build()
+                            nm.notify(id, notif)
+                            result.success(true)
+                        }
+                        else -> result.notImplemented()
                     }
-                    else -> result.notImplemented()
+                } catch (_: Throwable) {
+                    // OEM Android cihazlarda alarm/pil/bildirim servisleri istisna fırlatırsa
+                    // uygulamanın başlangıçta çökmesini engelle.
+                    result.success(false)
                 }
             }
     }
 
     private fun ensureChannels() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val channels = listOf(
-            NotificationChannel("pusula_signal", "Sinyal", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Yeni teknik kurulum ve giriş bölgesi bildirimleri"
-            },
-            NotificationChannel("pusula_outcome", "Sonuç", NotificationManager.IMPORTANCE_HIGH).apply {
-                description = "Hedef, stop, başabaş ve stopa yakınlık bildirimleri"
-            },
-            NotificationChannel("pusula_report", "Rapor", NotificationManager.IMPORTANCE_DEFAULT).apply {
-                description = "Pazar günü haftalık rapor bildirimleri"
-            },
-            NotificationChannel("pusula_system", "Sistem", NotificationManager.IMPORTANCE_LOW).apply {
-                description = "Veri kaynağı ve canlı izleme durum bildirimleri"
+        try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val channels = listOf(
+                NotificationChannel("pusula_signal", "Sinyal", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "Yeni teknik kurulum ve giriş bölgesi bildirimleri"
+                },
+                NotificationChannel("pusula_outcome", "Sonuç", NotificationManager.IMPORTANCE_HIGH).apply {
+                    description = "Hedef, stop, başabaş ve stopa yakınlık bildirimleri"
+                },
+                NotificationChannel("pusula_report", "Rapor", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                    description = "Pazar günü haftalık rapor bildirimleri"
+                },
+                NotificationChannel("pusula_system", "Sistem", NotificationManager.IMPORTANCE_LOW).apply {
+                    description = "Veri kaynağı ve canlı izleme durum bildirimleri"
+                }
+            )
+            for (ch in channels) {
+                nm.createNotificationChannel(ch)
             }
-        )
-        for (ch in channels) {
-            nm.createNotificationChannel(ch)
+        } catch (_: Throwable) {
+            // Kanal oluşturma hatası uygulamayı durdurmamalı.
         }
     }
 
     private fun scheduleExact(requestCode: Int, kind: String, triggerAtMs: Long) {
-        val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val intent = Intent(applicationContext, PusulaAlarmReceiver::class.java).apply {
-            putExtra("alarm_kind", kind)
-        }
-        val pi = PendingIntent.getBroadcast(
-            applicationContext,
-            requestCode,
-            intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
         try {
+            val am = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(applicationContext, PusulaAlarmReceiver::class.java).apply {
+                putExtra("alarm_kind", kind)
+            }
+            val pi = PendingIntent.getBroadcast(
+                applicationContext,
+                requestCode,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !am.canScheduleExactAlarms()) {
                 am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
             } else {
                 am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
             }
-        } catch (_: SecurityException) {
-            am.set(AlarmManager.RTC_WAKEUP, triggerAtMs, pi)
+        } catch (_: Throwable) {
+            // Kesin alarm izni veya OEM kısıtlamasında sessizce geri çekil.
         }
     }
 }
